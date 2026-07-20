@@ -122,7 +122,7 @@ export class InMemoryLanguageModel implements LanguageModel {
       .filter((id) => counts.vocab[id] !== SOS)
       .sort((a, b) => counts.uni[b] - counts.uni[a]);
     // Continuation counts for Kneser-Ney lowest order.
-    this.contCount = new Array(counts.vocab.length).fill(0);
+    this.contCount = new Array<number>(counts.vocab.length).fill(0);
     let totalBiTypes = 0;
     for (const inner of counts.bi.values()) {
       for (const next of inner.keys()) {
@@ -256,12 +256,12 @@ export class InMemoryLanguageModel implements LanguageModel {
  * alpha is the user's "personal-style bias" slider.
  */
 export class MixtureLanguageModel implements LanguageModel {
-  private global: LanguageModel;
+  private globalModel: LanguageModel;
   private personal: LanguageModel | null;
   private alpha: number;
 
-  constructor(global: LanguageModel, personal: LanguageModel | null, alpha: number) {
-    this.global = global;
+  constructor(globalModel: LanguageModel, personal: LanguageModel | null, alpha: number) {
+    this.globalModel = globalModel;
     this.personal = personal;
     this.alpha = alpha;
   }
@@ -271,12 +271,12 @@ export class MixtureLanguageModel implements LanguageModel {
   }
 
   hasWord(word: string): boolean {
-    return this.global.hasWord(word) || (this.personal?.hasWord(word) ?? false);
+    return this.globalModel.hasWord(word) || (this.personal?.hasWord(word) ?? false);
   }
 
   *vocabulary(): IterableIterator<string> {
     const seen = new Set<string>();
-    for (const w of this.global.vocabulary()) {
+    for (const w of this.globalModel.vocabulary()) {
       seen.add(w);
       yield w;
     }
@@ -285,21 +285,21 @@ export class MixtureLanguageModel implements LanguageModel {
   }
 
   size() {
-    return this.global.size();
+    return this.globalModel.size();
   }
 
   logProb(word: string, context: string[]): number {
-    const g = Math.exp(this.global.logProb(word, context));
+    const g = Math.exp(this.globalModel.logProb(word, context));
     if (!this.personal || this.alpha <= 0) return Math.log(g);
     const p = Math.exp(this.personal.logProb(word, context));
     return Math.log((1 - this.alpha) * g + this.alpha * p);
   }
 
   predict(context: string[], k: number): Scored[] {
-    if (!this.personal || this.alpha <= 0) return this.global.predict(context, k);
+    if (!this.personal || this.alpha <= 0) return this.globalModel.predict(context, k);
     // Union candidate words from both models, then re-score with the mixture.
     const words = new Set<string>();
-    for (const s of this.global.predict(context, k * 3)) words.add(s.word);
+    for (const s of this.globalModel.predict(context, k * 3)) words.add(s.word);
     for (const s of this.personal.predict(context, k * 3)) words.add(s.word);
     const scored: Scored[] = [];
     for (const w of words) scored.push({ word: w, logProb: this.logProb(w, context) });

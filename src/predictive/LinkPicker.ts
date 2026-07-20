@@ -16,6 +16,7 @@ import type { RelatedIndex, RelatedCandidate } from "./RelatedIndex";
 import type { PredictiveSettings } from "./PredictiveSettings";
 import { SectionPreview } from "./SectionPreview";
 import { renderLinkCard } from "./linkCard";
+import { dockSuggestionMenu } from "./linkDock";
 
 interface LinkItem {
   target: string;
@@ -129,6 +130,16 @@ export class LinkPicker extends EditorSuggest<LinkItem> {
     // highlights back to its item without re-deriving it from the DOM text.
     const index = this.rendered.push(item) - 1;
     el.dataset.saIndex = String(index);
+    // Dock the menu itself the first time a row is drawn for this batch. Obsidian positions
+    // this element after it fills it, so the placement is repeated on the next frame to land
+    // last; both writes are idempotent, so the menu never visibly moves.
+    if (index === 0) {
+      const menu = el.closest<HTMLElement>(".suggestion-container");
+      if (menu) {
+        dockSuggestionMenu(menu);
+        window.requestAnimationFrame(() => dockSuggestionMenu(menu));
+      }
+    }
     // The SAME card layout as the link-icon chooser, so the two menus look identical; the
     // "other" notes (offered for completeness) render muted.
     renderLinkCard(el, {
@@ -148,7 +159,7 @@ export class LinkPicker extends EditorSuggest<LinkItem> {
    *  the list as one docked column and doesn't jump row-to-row. Falls back to the row if the
    *  container can't be found. */
   private menuRect(rowEl: HTMLElement): DOMRect {
-    const menu = rowEl.closest(".suggestion-container") as HTMLElement | null;
+    const menu = rowEl.closest<HTMLElement>(".suggestion-container");
     return (menu ?? rowEl).getBoundingClientRect();
   }
 
@@ -245,5 +256,5 @@ function paragraphAround(editor: Editor, line: number): string {
 
 /** Drop a leading YAML frontmatter block so the preview shows prose, not tags/date. */
 function stripFrontmatter(text: string): string {
-  return text.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "").trim();
+  return text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "").trim();
 }

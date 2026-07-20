@@ -154,7 +154,8 @@ function appliedTags(app: App, file: TFile | null): Set<string> {
   if (!file) return out;
   const cache = app.metadataCache.getFileCache(file);
   for (const t of cache?.tags ?? []) out.add(t.tag.replace(/^#/, "").toLowerCase());
-  const fm = (cache?.frontmatter as Record<string, unknown> | undefined)?.tags;
+  const frontmatter: Record<string, unknown> | undefined = cache?.frontmatter;
+  const fm = frontmatter?.tags;
   const list = Array.isArray(fm) ? fm : typeof fm === "string" ? fm.split(/[,\s]+/) : [];
   for (const t of list) if (typeof t === "string" && t) out.add(t.replace(/^#/, "").toLowerCase());
   return out;

@@ -26,9 +26,6 @@ importers:
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260117.1
         version: 7.0.0-dev.20260117.1
-      builtin-modules:
-        specifier: 5.0.0
-        version: 5.0.0
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
@@ -284,10 +281,6 @@ packages:
     resolution: {integrity: sha512-5peFvGyf+TOlU6KYMLzfPiPJdxYwG0O/oQN4Z+EzDOzrN8tbY/H58+QOQww4Lo8m4b7+4o/0r+zopD/sYR6uMw==}
     hasBin: true
 
-  builtin-modules@5.0.0:
-    resolution: {integrity: sha512-bkXY9WsVpY7CvMhKSR6pZilZu9Ln5WDrKVBUXf2S443etkmEO4V58heTecXcUIsNsi4Rx8JUO4NfX1IcQl4deg==}
-    engines: {node: '>=18.20'}
-
   chokidar@5.0.0:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
     engines: {node: '>= 20.19.0'}
@@ -508,8 +501,6 @@ snapshots:
       '@typescript/native-preview-linux-x64': 7.0.0-dev.20260117.1
       '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260117.1
       '@typescript/native-preview-win32-x64': 7.0.0-dev.20260117.1
-
-  builtin-modules@5.0.0: {}
 
   chokidar@5.0.0:
     dependencies:

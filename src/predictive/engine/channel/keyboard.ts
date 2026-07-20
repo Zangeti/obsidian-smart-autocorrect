@@ -25,7 +25,7 @@ function keyPos(layout: KeyboardLayoutName): Map<string, { x: number; y: number 
   m = new Map();
   const rows = LAYOUTS[layout] ?? LAYOUTS.qwerty;
   rows.forEach((row, r) => {
-    for (let c = 0; c < row.length; c++) m!.set(row[c], { x: c + ROW_OFFSET[r], y: r });
+    for (let c = 0; c < row.length; c++) m.set(row[c], { x: c + ROW_OFFSET[r], y: r });
   });
   layoutCache.set(layout, m);
   return m;

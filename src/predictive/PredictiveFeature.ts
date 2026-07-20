@@ -3,7 +3,7 @@
  * lifecycle: engine + personalisation store + suggester + autocorrect + settings.
  * The fork's `main.ts` constructs this in onload and calls `enable()`.
  */
-import { debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile } from "obsidian";
+import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile } from "obsidian";
 import type { Editor, MarkdownFileInfo } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { pathExcluded, termFreq } from "./engine/index";
@@ -75,6 +75,8 @@ export class PredictiveFeature {
   /** The shared right-docked link chooser, used by the "link selection" command. Created
    *  lazily on first use so the markdown renderer is bound to a live plugin instance. */
   private linkChooserInstance: LinkChooser | null = null;
+  /** Markdown-render scopes, keyed by the element rendered into (see renderMarkdown). */
+  private readonly renderScopes = new Map<HTMLElement, Component>();
   private saveEngagement: () => void;
 
   constructor(
@@ -140,13 +142,30 @@ export class PredictiveFeature {
     if (parts.length) new Notice(`Frontmatter tags: ${parts.join("; ")}`);
   }
 
+  /**
+   * Render markdown into `el` under a component scoped to that element, NOT to the plugin.
+   * The plugin lives for the whole session, so anything a rendered note registers against it
+   * (embeds, callouts, mermaid) would never be released. One scope per target element,
+   * unloaded when that element is rendered into again, detached, or the feature shuts down.
+   */
+  private renderMarkdown = (md: string, el: HTMLElement, sourcePath: string): void => {
+    // The preview windows are created and destroyed as they open and close, so retire any
+    // scope whose element has gone: without this the map would grow with every hover.
+    for (const [target, scope] of this.renderScopes) {
+      if (target === el || !target.isConnected) {
+        scope.unload();
+        this.renderScopes.delete(target);
+      }
+    }
+    const scope = new Component();
+    scope.load();
+    this.renderScopes.set(el, scope);
+    void MarkdownRenderer.render(this.plugin.app, md, el, sourcePath, scope);
+  };
+
   /** The shared link chooser, built on first use. */
   private get linkChooser(): LinkChooser {
-    if (!this.linkChooserInstance)
-      this.linkChooserInstance = new LinkChooser(
-        (md, el, sourcePath) =>
-          void MarkdownRenderer.render(this.plugin.app, md, el, sourcePath, this.plugin),
-      );
+    if (!this.linkChooserInstance) this.linkChooserInstance = new LinkChooser(this.renderMarkdown);
     return this.linkChooserInstance;
   }
 
@@ -380,8 +399,8 @@ export class PredictiveFeature {
       return;
     }
     if (!freq || freq.length !== dict.length) return;
-    const keep = dict.filter((_, i) => freq![i] > 0);
-    const removed = dict.filter((_, i) => freq![i] === 0);
+    const keep = dict.filter((_, i) => freq[i] > 0);
+    const removed = dict.filter((_, i) => freq[i] === 0);
     if (removed.length === 0) return;
     this.settings.userDictionary = keep;
     this.onSettingsChanged();
@@ -477,7 +496,7 @@ export class PredictiveFeature {
       this.linkIndex,
       this.relatedIndex,
       () => this.settings,
-      (md, el, sourcePath) => void MarkdownRenderer.render(this.plugin.app, md, el, sourcePath, this.plugin),
+      this.renderMarkdown,
     );
     this.plugin.registerEditorSuggest(linkSuggest);
     // Both need to run BEFORE Obsidian's built-in `#` and `[[` completions, which otherwise
@@ -545,7 +564,7 @@ export class PredictiveFeature {
         () => this.settings,
         () => this.activeFileExcluded(),
         this.dismissedRelated,
-        (md, el, sourcePath) => void MarkdownRenderer.render(this.plugin.app, md, el, sourcePath, this.plugin),
+        this.renderMarkdown,
       ),
     );
 
@@ -637,11 +656,11 @@ export class PredictiveFeature {
     );
 
     // Incremental per-file corpus maintenance (#B3).
-    const isMd = (f: unknown) => f instanceof TFile && f.extension === "md";
+    const isMd = (f: unknown): f is TFile => f instanceof TFile && f.extension === "md";
     this.plugin.registerEvent(
       this.plugin.app.vault.on("modify", (f) => {
         if (isMd(f)) {
-          this.dirty.add((f as TFile).path);
+          this.dirty.add(f.path);
           this.flushDirty(); // pruning follows the corpus update, in processDirty (#8)
           this.refreshRelated();
         }
@@ -650,7 +669,7 @@ export class PredictiveFeature {
     this.plugin.registerEvent(
       this.plugin.app.vault.on("create", (f) => {
         if (isMd(f)) {
-          this.dirty.add((f as TFile).path);
+          this.dirty.add(f.path);
           this.flushDirty();
           this.refreshRelated();
         }
@@ -659,7 +678,7 @@ export class PredictiveFeature {
     this.plugin.registerEvent(
       this.plugin.app.vault.on("delete", (f) => {
         if (isMd(f)) {
-          this.engine.onFileDeleted((f as TFile).path);
+          void this.engine.onFileDeleted(f.path);
           this.refreshRelated();
           this.reconcileDict(); // a delete may have removed the last use of a dictionary word (#8)
         }
@@ -668,7 +687,7 @@ export class PredictiveFeature {
     this.plugin.registerEvent(
       this.plugin.app.vault.on("rename", (f, oldPath) => {
         if (isMd(f)) {
-          this.engine.onFileRenamed(oldPath, (f as TFile).path);
+          void this.engine.onFileRenamed(oldPath, f.path);
           this.refreshRelated();
         }
       }),
@@ -839,6 +858,8 @@ export class PredictiveFeature {
   }
 
   dispose(): void {
+    for (const scope of this.renderScopes.values()) scope.unload();
+    this.renderScopes.clear();
     this.engine.dispose();
   }
 
@@ -891,7 +912,7 @@ export class PredictiveFeature {
       // Prefer a prebuilt packed binary (#B2), else fall back to a text corpus.
       const packed = `${dir}/${PACKED_GLOBAL_FILE}`;
       if (await adapter.exists(packed)) {
-        this.engine.loadGlobalPacked(await adapter.readBinary(packed));
+        await this.engine.loadGlobalPacked(await adapter.readBinary(packed));
         return;
       }
       const corpus = `${dir}/${DEV_CORPUS_FILE}`;
@@ -928,7 +949,7 @@ export class PredictiveFeature {
     try {
       const path = `${dir}/${LSTM_FILE}`;
       if (await adapter.exists(path)) {
-        this.engine.loadLstm(await adapter.readBinary(path));
+        await this.engine.loadLstm(await adapter.readBinary(path));
       }
     } catch (e) {
       console.warn("[predictive] LSTM model not loaded", e);

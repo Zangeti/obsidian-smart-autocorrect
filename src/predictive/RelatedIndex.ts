@@ -15,7 +15,7 @@
  * Per-segment vectors are cached by note mtime; a rebuild only re-reads and re-embeds
  * changed notes, then re-centres everything (cheap in-memory).
  */
-import type { App, TFile } from "obsidian";
+import type { App } from "obsidian";
 import { segmentText, termFreq, tfidf, cosineSparse, documentFrequencies } from "./engine/index";
 import type { PredictiveEngineController } from "./PredictiveEngineController";
 
@@ -407,7 +407,7 @@ function sampleBackground(vectors: Float32Array[], n: number): number[] {
 /** Drop a leading YAML frontmatter block so its fields (tags, date, aliases) are never
  *  embedded, matched, or linked as if they were prose. */
 function stripFrontmatter(text: string): string {
-  return text.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "");
+  return text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "");
 }
 
 /**

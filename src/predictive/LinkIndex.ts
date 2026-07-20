@@ -32,7 +32,7 @@ export class LinkIndex {
     }
     const cache = this.app.metadataCache.getFileCache(f);
     // Aliases (frontmatter `aliases:` or `alias:`), string or list.
-    const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+    const fm: Record<string, unknown> | undefined = cache?.frontmatter;
     let aliases = fm?.aliases ?? fm?.alias;
     if (typeof aliases === "string") aliases = [aliases];
     if (Array.isArray(aliases))

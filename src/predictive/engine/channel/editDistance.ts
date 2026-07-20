@@ -33,9 +33,9 @@ export function weightedEdit(
 
   const denom = Math.max(1, n - 1);
   const INF = Infinity;
-  let r0: number[] = new Array(m + 1).fill(INF);
-  let r1: number[] = new Array(m + 1);
-  let r2: number[] = new Array(m + 1);
+  let r0 = new Array<number>(m + 1).fill(INF);
+  let r1 = new Array<number>(m + 1);
+  let r2 = new Array<number>(m + 1);
 
   r1[0] = 0;
   for (let j = 1; j <= m; j++) r1[j] = r1[j - 1] + cm.del(intended[j - 1], 0);
@@ -82,9 +82,9 @@ export function structuralEdit(a: string, b: string, maxDist = Infinity): number
   const n = a.length, m = b.length;
   if (n === 0) return m;
   if (m === 0) return n;
-  let r0: number[] = new Array(m + 1);
-  let r1: number[] = new Array(m + 1);
-  let r2: number[] = new Array(m + 1);
+  let r0 = new Array<number>(m + 1);
+  let r1 = new Array<number>(m + 1);
+  let r2 = new Array<number>(m + 1);
   for (let j = 0; j <= m; j++) r1[j] = j;
   for (let i = 1; i <= n; i++) {
     r2[0] = i;
@@ -127,9 +127,9 @@ export function prefixCost(
   const m = intended.length;
   if (n === 0) return 0;
   const denom = Math.max(1, n - 1);
-  let r0: number[] = new Array(m + 1).fill(Infinity);
-  let r1: number[] = new Array(m + 1);
-  let r2: number[] = new Array(m + 1);
+  let r0 = new Array<number>(m + 1).fill(Infinity);
+  let r1 = new Array<number>(m + 1);
+  let r2 = new Array<number>(m + 1);
   r1[0] = 0;
   for (let j = 1; j <= m; j++) r1[j] = 0; // any prefix boundary is free (no suffix penalty)
   for (let i = 1; i <= n; i++) {
@@ -180,7 +180,7 @@ export class IncrementalMatcher {
     this.intended = intended;
     this.cm = cm;
     const m = intended.length;
-    const row0 = new Array(m + 1);
+    const row0 = new Array<number>(m + 1);
     row0[0] = 0;
     for (let j = 1; j <= m; j++) row0[j] = row0[j - 1] + cm.del(intended[j - 1], 0);
     this.rows = [row0];
@@ -194,7 +194,7 @@ export class IncrementalMatcher {
     const posFrac = (i - 1) / denom;
     const prev = this.rows[i - 1];
     const prev2 = i >= 2 ? this.rows[i - 2] : null;
-    const row = new Array(m + 1);
+    const row = new Array<number>(m + 1);
     row[0] = prev[0] + this.cm.ins(ch, posFrac);
     const tiPrev = this.typed[i - 2];
     for (let j = 1; j <= m; j++) {

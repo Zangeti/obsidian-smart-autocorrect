@@ -33,7 +33,7 @@ export function linkSuggestExtension(
 ) {
   const spanAt = (view: EditorView, node: Node) => {
     const el =
-      node instanceof HTMLElement
+      node.instanceOf(HTMLElement)
         ? node.closest(".smart-autocorrect-linkable")
         : node.parentElement?.closest(".smart-autocorrect-linkable") ?? null;
     if (!el) return null;

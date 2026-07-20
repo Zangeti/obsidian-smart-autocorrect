@@ -71,7 +71,7 @@ function buildFeatures(
 ): FeatureVector {
   const prefixExact = typed && word.startsWith(typed.toLowerCase()) ? 1 : 0;
   const caseMatch = typed && typed[0] === typed[0].toLowerCase() ? 1 : 0;
-  const f = new Array(FEATURE_NAMES.length).fill(0);
+  const f = new Array<number>(FEATURE_NAMES.length).fill(0);
   f[0] = logProbLM; // lmLogProb
   f[1] = -cost; // negChannel
   f[2] = prefixExact;

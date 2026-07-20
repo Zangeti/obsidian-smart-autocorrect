@@ -61,6 +61,22 @@ export function placeList(el: HTMLElement, preferredTop: number): void {
 }
 
 /**
+ * Dock the `[[` picker's menu, whose element Obsidian creates AND positions itself.
+ *
+ * The geometry is written inline rather than from the stylesheet for two reasons: Obsidian
+ * sets `left` and `top` inline, which no stylesheet rule can override without `!important`;
+ * and reaching the element from CSS at all meant matching it with `:has()`, making every
+ * suggester in the app pay for a selector that only ever applies to this one. The caller
+ * already holds the element, so it can simply be measured and placed like our own windows.
+ */
+export function dockSuggestionMenu(el: HTMLElement): void {
+  el.classList.add("sa-link-dock");
+  const width = dockWidth();
+  el.style.width = `${width}px`;
+  el.style.left = `${dockLeft(width)}px`;
+}
+
+/**
  * Place the PREVIEW window directly beneath `listRect`, filling the space left to the bottom of
  * the viewport. It never moves the list and never flips above it: when the section is taller
  * than the space available the window scrolls internally instead, which keeps the one thing the

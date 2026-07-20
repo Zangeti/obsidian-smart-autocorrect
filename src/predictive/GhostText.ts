@@ -46,10 +46,7 @@ class GhostWidget extends WidgetType {
     return other.text === this.text;
   }
   toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.className = "predictive-ghost";
-    span.textContent = this.text;
-    return span;
+    return createSpan({ cls: "predictive-ghost", text: this.text });
   }
   ignoreEvent(): boolean {
     return true;

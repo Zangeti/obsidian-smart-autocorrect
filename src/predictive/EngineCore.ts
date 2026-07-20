@@ -123,7 +123,7 @@ function orderMenu<T extends { p: number; saved: number }>(cands: T[], k: number
 export class EngineCore {
   private settings: PredictiveSettings;
   private personalization: Personalization;
-  private global: LanguageModel | null = null;
+  private globalModel: LanguageModel | null = null;
   private globalCounts: NgramCounts | null = null;
   private personal: LanguageModel | null = null;
   private corpus: IncrementalCorpus | null = null;
@@ -242,16 +242,16 @@ export class EngineCore {
   loadGlobalText(corpusText: string | null): void {
     if (corpusText) {
       this.globalCounts = buildCountsFromText(corpusText, { blend: this.blendCfg() });
-      this.global = new InMemoryLanguageModel(this.globalCounts, this.blendCfg());
+      this.globalModel = new InMemoryLanguageModel(this.globalCounts, this.blendCfg());
     } else {
-      this.global = null;
+      this.globalModel = null;
       this.globalCounts = null;
     }
     this.rebuild();
   }
 
   loadGlobalPacked(buffer: ArrayBuffer): void {
-    this.global = PackedLanguageModel.fromBuffer(buffer);
+    this.globalModel = PackedLanguageModel.fromBuffer(buffer);
     this.globalCounts = null; // packed model can't be re-packed
     this.rebuild();
   }
@@ -302,12 +302,12 @@ export class EngineCore {
    */
   private isRealWord(word: string): boolean {
     const w = word.toLowerCase();
-    if (this.global?.hasWord(w)) return true;
+    if (this.globalModel?.hasWord(w)) return true;
     if (this.lexicon.has(w)) return true;
     if (this.wordOracle.has(w)) return true;
     if (this.vaultLexical(w)) return true;
     return this.wordOracle.stemKnown(w, (x) =>
-      (this.global?.hasWord(x) ?? false) || this.lexicon.has(x) || this.wordOracle.has(x),
+      (this.globalModel?.hasWord(x) ?? false) || this.lexicon.has(x) || this.wordOracle.has(x),
     );
   }
 
@@ -340,8 +340,8 @@ export class EngineCore {
   }
 
   packGlobal(): ArrayBuffer | null {
-    if (!this.global || !this.globalCounts) return null;
-    return packCounts(this.global, this.globalCounts, { topK: 24 });
+    if (!this.globalModel || !this.globalCounts) return null;
+    return packCounts(this.globalModel, this.globalCounts, { topK: 24 });
   }
 
   // --- personal corpus (texts arrive from the main thread) -----------------
@@ -418,7 +418,7 @@ export class EngineCore {
   }
 
   private rebuild(): void {
-    if (!this.global && !this.personal) {
+    if (!this.globalModel && !this.personal) {
       this.base = null;
       this.cache = null;
       this.index = null;
@@ -426,8 +426,8 @@ export class EngineCore {
       this.midModel = null;
       return;
     }
-    const baseModel = this.global ?? this.personal!;
-    const personal = this.global ? this.personal : null;
+    const baseModel = this.globalModel ?? this.personal!;
+    const personal = this.globalModel ? this.personal : null;
     this.base = new MixtureLanguageModel(
       baseModel,
       personal,

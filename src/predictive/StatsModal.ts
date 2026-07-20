@@ -83,14 +83,14 @@ export class StatsModal extends Modal {
       const span = s.nextMilestone - prev;
       const done = Math.min(1, Math.max(0, (s.keystrokesSaved - prev) / span));
       const wrap = root.createDiv({ cls: "sa-progress-wrap" });
-      wrap.createEl("div", {
+      wrap.createDiv({
         cls: "sa-progress-label",
         text: `Next up: ${s.nextMilestone.toLocaleString()} keystrokes saved`,
       });
       const bar = wrap.createDiv({ cls: "sa-progress-bar" });
       const fill = bar.createDiv({ cls: "sa-progress-fill" });
       fill.style.width = `${Math.round(done * 100)}%`;
-      wrap.createEl("div", {
+      wrap.createDiv({
         cls: "sa-progress-remaining",
         text: `${(s.nextMilestone - s.keystrokesSaved).toLocaleString()} to go`,
       });

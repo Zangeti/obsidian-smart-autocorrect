@@ -26,8 +26,8 @@ export function segment(
   const N = t.length;
   const minLen = opts.minPieceLen ?? 1;
   // dp[i] = best {logProb, prev} for prefix t[0..i]
-  const best = new Array(N + 1).fill(-Infinity);
-  const back = new Array(N + 1).fill(-1);
+  const best = new Array<number>(N + 1).fill(-Infinity);
+  const back = new Array<number>(N + 1).fill(-1);
   best[0] = 0;
   for (let i = 1; i <= N; i++) {
     for (let j = Math.max(0, i - 20); j < i; j++) {

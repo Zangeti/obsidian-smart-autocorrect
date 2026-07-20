@@ -26,9 +26,13 @@ export interface AssetSpec {
 }
 
 /**
- * Assets for this plugin version. `RELEASE_TAG` pins the download to the release
- * built from this source, so an older plugin can never pull a newer, incompatible
- * model (the .bin format is versioned - see engine/src/lstm/model.ts).
+ * `RELEASE_TAG` names the release that CARRIES the model files, which is not the same as
+ * the current plugin version: the models are large and change rarely, so they are published
+ * once and every plugin release that can read them points at that same tag. Bump it only
+ * when a new model is published (the .bin format is versioned - see engine/src/lstm/model.ts),
+ * which keeps the pin doing its real job: an older plugin can never pull a newer,
+ * incompatible model. It also keeps ordinary plugin releases to the three files Obsidian
+ * actually installs.
  */
 export const RELEASE_TAG = "1.0.0";
 export const ASSET_BASE =

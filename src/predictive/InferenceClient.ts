@@ -72,12 +72,12 @@ export class InferenceClient {
         const core = this.inline as unknown as Record<string, (...a: unknown[]) => unknown>;
         return Promise.resolve(core[op].apply(this.inline, args) as T);
       } catch (e) {
-        return Promise.reject(e);
+        return Promise.reject(e instanceof Error ? e : new Error(String(e)));
       }
     }
     const id = ++this.seq;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as never, reject });
+      this.pending.set(id, { resolve, reject });
       w.postMessage({ id, op, args }, transfer);
     });
   }

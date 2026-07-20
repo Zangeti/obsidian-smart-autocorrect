@@ -100,8 +100,7 @@ class LinkIconWidget extends WidgetType {
     );
   }
   toDOM(view: EditorView): HTMLElement {
-    const el = document.createElement("span");
-    el.className = "smart-autocorrect-link-icon";
+    const el = createSpan({ cls: "smart-autocorrect-link-icon" });
     el.setAttribute("aria-label", `${this.seg.candidates.length} related note${this.seg.candidates.length === 1 ? "" : "s"}`);
     setIcon(el, "link");
     el.onmousedown = (e) => {

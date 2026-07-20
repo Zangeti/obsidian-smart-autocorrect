@@ -1,4 +1,4 @@
-import builtins from "builtin-modules";
+import { builtinModules as builtins } from "node:module";
 import chokidar from "chokidar";
 import esbuild from "esbuild";
 import fs from "fs";

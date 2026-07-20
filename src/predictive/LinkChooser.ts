@@ -105,8 +105,7 @@ export class LinkChooser {
   open(opts: ChooserOptions): void {
     this.close();
     this.opts = opts;
-    const panel = document.createElement("div");
-    panel.className = "smart-autocorrect-related-popover";
+    const panel = createDiv({ cls: "smart-autocorrect-related-popover" });
 
     const head = panel.createDiv({ cls: "sa-rel-head" });
     head.createSpan({ cls: "sa-rel-title", text: opts.title });
@@ -142,7 +141,7 @@ export class LinkChooser {
     this.el = panel;
     placeList(panel, opts.preferredTop);
     if (opts.candidates.length > 0) this.select(0);
-    setTimeout(() => {
+    window.setTimeout(() => {
       document.addEventListener("mousedown", this.onDoc, true);
       document.addEventListener("keydown", this.onKey, true);
     }, 0);

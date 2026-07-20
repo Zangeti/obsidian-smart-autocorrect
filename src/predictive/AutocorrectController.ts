@@ -54,7 +54,7 @@ export class AutocorrectController {
   private recent: { from: string; to: string; abbrev?: string }[] = [];
   private pending: { word: string; pos: number; abbrev?: string; createdAt: number } | null = null;
   private updateSeq = 0;
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingTimer: number | null = null;
 
   /** Called with the original word when a correction is undone AND the word is kept, so the
    *  plugin can add it to the personal dictionary (gated on the setting and on the word not
@@ -136,9 +136,9 @@ export class AutocorrectController {
       const corr = this.recent.splice(idx, 1)[0];
       this.engine.recordRevert(corr.from); // the original was actually intended
       this.pending = { word: corr.from, pos: toB - ins.length, abbrev: corr.abbrev, createdAt: this.updateSeq };
-      if (this.pendingTimer) clearTimeout(this.pendingTimer);
+      if (this.pendingTimer) window.clearTimeout(this.pendingTimer);
       // Fallback for "revert then stop typing": confirm after a short idle too.
-      this.pendingTimer = setTimeout(() => {
+      this.pendingTimer = window.setTimeout(() => {
         const ed = this.activeEditor();
         const view = ed ? this.viewOf(ed) : null;
         if (view) this.resolvePending(view);
@@ -153,7 +153,7 @@ export class AutocorrectController {
     if (!p) return;
     this.pending = null;
     if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
+      window.clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
     const doc = view.state.doc;
@@ -177,7 +177,7 @@ export class AutocorrectController {
 
   private onKeyDown(evt: KeyboardEvent): void {
     // IME safety: never act during a composition (CJK, accents, etc.).
-    if (evt.isComposing || evt.keyCode === 229) {
+    if (evt.isComposing || evt.key === "Process") {
       this.justCorrected = false;
       return;
     }
@@ -213,7 +213,7 @@ export class AutocorrectController {
     // captured position still points at the word.
     const at = evt.key === "Enter" ? editor.getCursor() : null;
     // Defer to after the boundary character is inserted by the editor.
-    setTimeout(() => void this.handleBoundary(editor, at), 0);
+    window.setTimeout(() => void this.handleBoundary(editor, at), 0);
   }
 
   /**

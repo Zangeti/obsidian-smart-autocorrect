@@ -30,8 +30,7 @@ export class SectionPreview {
     key: string,
   ): void {
     if (!this.el) {
-      this.el = document.createElement("div");
-      this.el.className = "smart-autocorrect-related-preview";
+      this.el = createDiv({ cls: "smart-autocorrect-related-preview" });
       this.titleEl = this.el.createDiv({ cls: "sa-rel-preview-title" });
       this.bodyEl = this.el.createDiv({ cls: "sa-rel-preview-body markdown-rendered" });
       document.body.appendChild(this.el);

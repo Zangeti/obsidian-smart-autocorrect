@@ -1,7 +1,7 @@
 {
   "id": "smart-autocorrect",
   "name": "Smart Autocorrect",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.11.4",
   "description": "Predictive text, autocorrect and link suggestions that run on your device. A local neural language model completes your next word, fixes typos as you type, and gets capitalisation right.",
   "author": "Zangeti",

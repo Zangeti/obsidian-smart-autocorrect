@@ -221,7 +221,7 @@ export class PackedLanguageModel implements LanguageModel {
     const maxLp = r.f32();
     const dec = new TextDecoder();
     const vcount = r.u32();
-    const vocab: string[] = new Array(vcount);
+    const vocab = new Array<string>(vcount);
     for (let i = 0; i < vcount; i++) {
       const len = r.u16();
       vocab[i] = dec.decode(r.bytes(len));
@@ -239,7 +239,7 @@ export class PackedLanguageModel implements LanguageModel {
     const readRows = (keyIsF64: boolean) => {
       const n = r.u32();
       const keys = keyIsF64 ? new Float64Array(n) : new Uint32Array(n);
-      const lists: ContList[] = new Array(n);
+      const lists = new Array<ContList>(n);
       for (let i = 0; i < n; i++) {
         keys[i] = keyIsF64 ? r.f64() : r.u32();
         const len = r.u16();

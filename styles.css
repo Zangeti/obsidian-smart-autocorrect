@@ -232,15 +232,13 @@ body {
 }
 
 /* Dock the [[ picker to the same column as our own chooser: same width, same right edge, and
-   capped in height so its preview always has room beneath it. Obsidian positions this element
-   itself, so the right edge has to win over its inline `left`. Scoped via :has so only OUR
-   suggestion menu is affected - the command palette and every other suggester are untouched. */
-.suggestion-container:has(.sa-rel-card) {
-  width: var(--sa-link-dock-width);
+   capped in height so its preview always has room beneath it. Obsidian both creates and
+   positions this element, so the width and left edge are written inline by dockSuggestionMenu
+   (see linkDock.ts) - a stylesheet cannot outrank its inline `left`, and the `.sa-link-dock`
+   class it adds means only OUR menu is matched, without a :has() scan of every suggester. */
+.suggestion-container.sa-link-dock {
   max-width: calc(100vw - 24px);
   max-height: 45vh;
-  left: auto !important;
-  right: 12px !important;
 }
 
 /* [[ link picker rows */

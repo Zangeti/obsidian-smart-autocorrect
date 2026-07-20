@@ -57,7 +57,7 @@ export function protectedRanges(text: string): Array<[number, number]> {
   add(/https?:\/\/\S+/g); // urls
   // YAML frontmatter block at the very top (tolerating a BOM and CRLF endings), so its
   // fields (date, tags, aliases) are never treated as prose to segment or link.
-  const fm = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  const fm = /^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
   if (fm) ranges.push([0, fm[0].length]);
   return ranges;
 }

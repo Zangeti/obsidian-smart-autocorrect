@@ -97,7 +97,7 @@ export class FuzzyTrie {
     if (n === 0) return [];
 
     // Column 0 (empty intended): typed vs "" = user typed n extra chars.
-    const col0 = new Array(n + 1);
+    const col0 = new Array<number>(n + 1);
     col0[0] = 0;
     for (let i = 1; i <= n; i++) col0[i] = col0[i - 1] + cm.ins(t[i - 1], (i - 1) / Math.max(1, n - 1));
 
@@ -118,7 +118,7 @@ export class FuzzyTrie {
       if (found.size >= limit * 4) return;
       for (const [ch, child] of node.children) {
         const posFrac = Math.min(1, (depth) / 6);
-        const col = new Array(n + 1);
+        const col = new Array<number>(n + 1);
         col[0] = prevCol[0] + cm.del(ch, posFrac); // intended char, empty typed prefix
         let rowMin = col[0];
         for (let i = 1; i <= n; i++) {

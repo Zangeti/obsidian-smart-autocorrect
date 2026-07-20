@@ -244,7 +244,7 @@ export class LstmLanguageModel implements LanguageModel {
     m.nPhrase = Math.min(PHRASE_SHORTLIST, V);
 
     const dec = new TextDecoder();
-    const vocab: string[] = new Array(V);
+    const vocab = new Array<string>(V);
     for (let i = 0; i < V; i++) {
       const len = u16();
       vocab[i] = dec.decode(new Uint8Array(buf, o, len));
@@ -750,7 +750,7 @@ export class LstmLanguageModel implements LanguageModel {
         // h = Whr . hRaw, with a zero bias so project_i8 is a plain matvec.
         const sr = this.scaleOf(this.hRawView, hid);
         k.quantise_vec(P.hRaw, P.hRawQ, hid, 1 / sr);
-        k.project_i8(P.whr[L], P.whrS![L], P.zero, P.hRawQ, P.h[L], dim, hid, sr);
+        k.project_i8(P.whr[L], P.whrS[L], P.zero, P.hRawQ, P.h[L], dim, hid, sr);
       } else {
         this.h[L].set(this.hRawView);
       }

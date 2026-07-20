@@ -105,7 +105,7 @@ export class PersonalizationStore {
       new Notice(`No file at ${p}`);
       return;
     }
-    const raw = JSON.parse(await adapter.read(p));
+    const raw: unknown = JSON.parse(await adapter.read(p));
     if (merge) this.personalization.mergeFrom(raw);
     else this.personalization.loadFrom(raw);
     await this.save();
