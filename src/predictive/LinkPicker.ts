@@ -134,11 +134,15 @@ export class LinkPicker extends EditorSuggest<LinkItem> {
     // this element after it fills it, so the placement is repeated on the next frame to land
     // last; both writes are idempotent, so the menu never visibly moves.
     if (index === 0) {
-      const menu = el.closest<HTMLElement>(".suggestion-container");
-      if (menu) {
-        dockSuggestionMenu(menu);
-        window.requestAnimationFrame(() => dockSuggestionMenu(menu));
-      }
+      const dock = () => {
+        const menu = el.closest<HTMLElement>(".suggestion-container");
+        if (menu) dockSuggestionMenu(menu);
+      };
+      dock();
+      // Repeated on the next frame because Obsidian positions the menu after filling it, and
+      // because the row is not guaranteed to be in the document yet on this call. Both writes
+      // are idempotent, so the menu never visibly moves.
+      window.requestAnimationFrame(dock);
     }
     // The SAME card layout as the link-icon chooser, so the two menus look identical; the
     // "other" notes (offered for completeness) render muted.
