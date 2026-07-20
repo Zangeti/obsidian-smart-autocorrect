@@ -1,0 +1,15 @@
+# npm
+node_modules
+
+# build output (attached to releases instead)
+main.js
+*.js.map
+
+# editors
+.idea
+*.iml
+
+# model assets are downloaded at runtime, never committed
+word_lstm.bin
+predictive-global.bin
+wordlist.bin

@@ -1,0 +1,10 @@
+# Obsidian provides ONE copy of @codemirror/state at runtime (it is an esbuild
+# external), but obsidian's peer range and @codemirror/commands resolved two
+# different versions here. Two copies typecheck as unrelated nominal types, so
+# passing an EditorView to a command from the other copy fails to compile. Pin it.
+overrides:
+  "@codemirror/state": 6.7.1
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true

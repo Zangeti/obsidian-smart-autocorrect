@@ -1,0 +1,11 @@
+{
+  "id": "smart-autocorrect",
+  "name": "Smart Autocorrect",
+  "version": "1.0.0",
+  "minAppVersion": "1.11.4",
+  "description": "Predictive text, autocorrect and link suggestions that run on your device. A local neural language model completes your next word and whole phrases, fixes typos as you type, and gets capitalisation right. Your writing never leaves your vault.",
+  "author": "Zangeti",
+  "fundingUrl": "https://buymeacoffee.com/zangeti",
+  "isDesktopOnly": false,
+  "authorUrl": "https://github.com/Zangeti"
+}

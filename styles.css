@@ -1,0 +1,372 @@
+/* Smart Autocorrect styles. */
+.predictive-suggestion { display: flex; justify-content: space-between; gap: 1em; align-items: baseline; }
+.predictive-suggestion .predictive-left { display: flex; align-items: baseline; gap: 0.45em; min-width: 0; }
+.predictive-suggestion .predictive-mark { color: var(--text-accent); opacity: 0.7; font-size: 0.75em; }
+.predictive-kind { opacity: 0.5; font-size: 0.8em; font-style: italic; white-space: nowrap; }
+/* Tint the plugin's own suggestion popup so it reads as distinct from plain completions. */
+.suggestion-item.is-selected .predictive-suggestion .predictive-mark { opacity: 1; }
+
+/* Buy me a coffee QR in settings */
+.smart-autocorrect-qr {
+  border-radius: 8px;
+  margin-top: 4px;
+  background: #fff;
+  padding: 6px;
+}
+
+/* Writing-stats dashboard modal */
+.smart-autocorrect-stats h2 {
+  margin: 0 0 2px;
+}
+.smart-autocorrect-stats h3 {
+  margin: 22px 0 8px;
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.smart-autocorrect-stats .sa-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0 10px;
+}
+.smart-autocorrect-stats .sa-stat-card {
+  padding: 16px 10px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  text-align: center;
+}
+.smart-autocorrect-stats .sa-stat-value {
+  font-size: 1.9em;
+  font-weight: 800;
+  color: var(--text-accent);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.smart-autocorrect-stats .sa-stat-label {
+  font-size: 0.76em;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.smart-autocorrect-stats .sa-stat-sub {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  text-align: center;
+  margin: 0 0 4px;
+}
+.smart-autocorrect-stats .sa-progress-wrap {
+  margin: 18px 0 4px;
+}
+.smart-autocorrect-stats .sa-progress-label {
+  font-size: 0.9em;
+  margin-bottom: 6px;
+}
+.smart-autocorrect-stats .sa-progress-bar {
+  height: 8px;
+  border-radius: 6px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+.smart-autocorrect-stats .sa-progress-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--interactive-accent);
+  transition: width 0.4s ease;
+}
+.smart-autocorrect-stats .sa-progress-remaining {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-top: 5px;
+  text-align: right;
+}
+.smart-autocorrect-stats .sa-stat-rows {
+  display: flex;
+  flex-direction: column;
+}
+.smart-autocorrect-stats .sa-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.smart-autocorrect-stats .sa-stat-row:last-child {
+  border-bottom: none;
+}
+.smart-autocorrect-stats .sa-stat-row-label {
+  color: var(--text-muted);
+  font-size: 0.92em;
+}
+.smart-autocorrect-stats .sa-stat-row-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.smart-autocorrect-stats .sa-stat-support {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.smart-autocorrect-stats .sa-stat-support p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+.smart-autocorrect-stats .sa-stat-support .smart-autocorrect-qr {
+  flex: 0 0 auto;
+}
+
+/* The link column: ONE width shared by the candidate list, the section preview and the [[
+   picker, so all three routes render the same right-docked pair of windows. JS reads this
+   custom property (see linkDock.ts) rather than repeating the number. */
+body {
+  --sa-link-dock-width: 380px;
+}
+
+/* Related-link chooser popover (the LIST half of the column) */
+.smart-autocorrect-related-popover {
+  position: fixed;
+  z-index: 9999;
+  width: var(--sa-link-dock-width);
+  max-width: calc(100vw - 24px);
+  max-height: 45vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s, 0 4px 16px rgba(0, 0, 0, 0.25));
+}
+.smart-autocorrect-related-popover .sa-rel-list {
+  overflow-y: auto;
+  max-height: 56vh;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.smart-autocorrect-related-popover .sa-rel-preview-title {
+  font-weight: 600;
+  color: var(--text-accent);
+  font-size: 0.85em;
+  margin-bottom: 6px;
+}
+.smart-autocorrect-related-popover .sa-rel-preview-body {
+  font-size: 0.82em;
+  line-height: 1.4;
+  color: var(--text-normal);
+}
+.smart-autocorrect-related-popover .sa-rel-preview-body > :first-child { margin-top: 0; }
+.smart-autocorrect-related-popover .sa-rel-preview-body > :last-child { margin-bottom: 0; }
+.smart-autocorrect-related-popover .sa-rel-preview-body ul,
+.smart-autocorrect-related-popover .sa-rel-preview-body ol { padding-left: 1.3em; margin: 0.3em 0; }
+.smart-autocorrect-related-popover .sa-rel-preview-body p { margin: 0.3em 0; }
+.smart-autocorrect-related-popover .sa-rel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+}
+.smart-autocorrect-related-popover .sa-rel-title {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.smart-autocorrect-related-popover .sa-rel-dismiss {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.smart-autocorrect-related-popover .sa-rel-dismiss:hover {
+  color: var(--text-normal);
+}
+.smart-autocorrect-related-popover .sa-rel-hint {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  padding: 6px 6px 2px;
+  margin-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+/* Shared link card - used by BOTH the link-icon chooser and the [[ picker rows. */
+.sa-rel-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sa-rel-card-muted { opacity: 0.55; }
+.sa-rel-card-muted .sa-rel-name { color: var(--text-muted); font-weight: 500; }
+
+/* Confirmation dialog. The red border + red title only apply to DESTRUCTIVE actions
+   (.sa-confirm-red); a reversible confirm (e.g. resetting options) stays neutral. */
+.smart-autocorrect-confirm .sa-confirm-title {
+  margin-top: 0.4em;
+}
+.smart-autocorrect-confirm.sa-confirm-red {
+  border-top: 4px solid var(--text-error, #e5484d);
+}
+.smart-autocorrect-confirm.sa-confirm-red .sa-confirm-title {
+  color: var(--text-error, #e5484d);
+}
+.smart-autocorrect-confirm .sa-confirm-body {
+  color: var(--text-muted);
+}
+.smart-autocorrect-confirm .sa-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.smart-autocorrect-confirm .sa-confirm-danger {
+  background: var(--text-error, #e5484d);
+  color: #fff;
+}
+
+/* Dock the [[ picker to the same column as our own chooser: same width, same right edge, and
+   capped in height so its preview always has room beneath it. Obsidian positions this element
+   itself, so the right edge has to win over its inline `left`. Scoped via :has so only OUR
+   suggestion menu is affected - the command palette and every other suggester are untouched. */
+.suggestion-container:has(.sa-rel-card) {
+  width: var(--sa-link-dock-width);
+  max-width: calc(100vw - 24px);
+  max-height: 45vh;
+  left: auto !important;
+  right: 12px !important;
+}
+
+/* [[ link picker rows */
+.smart-autocorrect-link-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8em;
+}
+.smart-autocorrect-link-pick .sa-pick-main { min-width: 0; }
+/* "Other" notes: present so nothing is lost, but dimmed as not-recommended. */
+.smart-autocorrect-link-pick.sa-pick-muted { opacity: 0.5; }
+.smart-autocorrect-link-pick.sa-pick-muted .sa-pick-name { color: var(--text-muted); font-weight: 500; }
+.smart-autocorrect-link-pick .sa-pick-name {
+  font-weight: 600;
+  color: var(--text-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.smart-autocorrect-link-pick .sa-pick-snippet {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.smart-autocorrect-link-pick .sa-pick-badge {
+  flex: 0 0 auto;
+  font-size: 0.68em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-accent);
+  background: var(--background-secondary);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* Tag autocomplete rows (#) */
+.smart-autocorrect-tag-suggestion {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+}
+.smart-autocorrect-tag-suggestion .sa-tag-name {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+.smart-autocorrect-tag-suggestion .sa-tag-meta {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sa-rel-card:hover {
+  background: var(--background-modifier-hover);
+}
+.sa-rel-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sa-rel-name {
+  font-weight: 600;
+  color: var(--text-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sa-rel-snippet {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.sa-rel-meta {
+  flex: 0 0 auto;
+}
+.sa-rel-score {
+  font-size: 0.72em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+/* Section preview: the LOWER half of the link column. Same width and right edge as the list
+   above it; its height is set in JS to exactly the space left below, and it SCROLLS rather than
+   growing, so a longer section never shifts the list you are arrowing through. */
+.smart-autocorrect-related-preview {
+  position: fixed;
+  z-index: 10000;
+  width: var(--sa-link-dock-width);
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s, 0 4px 16px rgba(0, 0, 0, 0.25));
+}
+.smart-autocorrect-related-preview .sa-rel-preview-title {
+  font-weight: 600;
+  color: var(--text-accent);
+  margin-bottom: 6px;
+  font-size: 0.9em;
+}
+.smart-autocorrect-related-preview .sa-rel-preview-body {
+  font-size: 0.85em;
+  color: var(--text-normal);
+  line-height: 1.4;
+}
+.smart-autocorrect-related-preview .sa-rel-preview-body > :first-child {
+  margin-top: 0;
+}
+.smart-autocorrect-related-preview .sa-rel-preview-body > :last-child {
+  margin-bottom: 0;
+}
+.smart-autocorrect-related-preview .sa-rel-preview-body ul,
+.smart-autocorrect-related-preview .sa-rel-preview-body ol {
+  padding-left: 1.3em;
+  margin: 0.3em 0;
+}
+.smart-autocorrect-related-preview .sa-rel-preview-body p {
+  margin: 0.3em 0;
+}
