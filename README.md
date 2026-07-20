@@ -80,7 +80,9 @@ The neural model is trained on **English**, so prediction, phrase completion, an
 
 ## Support
 
-If you find this useful, you can [buy me a coffee](https://buymeacoffee.com/zangeti).
+If you find this useful:
+
+<a href="https://buymeacoffee.com/zangeti"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50"></a>
 
 ---
 
