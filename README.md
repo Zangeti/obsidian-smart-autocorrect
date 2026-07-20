@@ -78,6 +78,12 @@ The neural model is trained on **English**, so prediction, phrase completion, an
 
 ---
 
+## Support
+
+If you find this useful, you can [buy me a coffee](https://buymeacoffee.com/zangeti).
+
+---
+
 ## Acknowledgements
 
 This plugin began as a fork of [Various Complements](https://github.com/tadashi-aikawa/obsidian-various-complements-plugin) by Tadashi Aikawa. Its engine has since been rewritten from scratch around a local neural language model; the build setup is still derived from it. MIT licensed.
