@@ -3,7 +3,7 @@
 [![release](https://img.shields.io/github/v/release/Zangeti/obsidian-smart-autocorrect)](https://github.com/Zangeti/obsidian-smart-autocorrect/releases/latest)
 ![downloads](https://img.shields.io/github/downloads/Zangeti/obsidian-smart-autocorrect/total)
 
-Predict your next word, fix typos as you type, and suggest links to your notes. All on your device.
+Context-aware AI predictive text for Obsidian. A local neural model reads what you are writing to predict your next word, fix typos as you type, and suggest links to your notes. All on your device.
 
 ![Smart Autocorrect predicting the next word as you type](docs/demo.gif)
 
