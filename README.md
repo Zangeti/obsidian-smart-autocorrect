@@ -15,6 +15,9 @@ Predict your next word, fix typos as you type, and suggest links to your notes. 
 - **Links to notes you already wrote.** Text that matches a note is underlined; hover to preview, click to link.
 - **Learns your writing.** Words and phrasing from your own notes come up first.
 - **Undo teaches it.** **Ctrl/Cmd-Z** puts your text back and stops that correction happening again.
+- **See what it saves.** A running tally of keystrokes saved, your streak, and how much typing time you got back.
+
+<img src="docs/stats.png" alt="The writing stats dashboard, showing keystrokes saved, typing time saved and current streak" width="440">
 
 ## Getting started
 
