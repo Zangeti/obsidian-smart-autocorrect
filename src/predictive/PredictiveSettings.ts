@@ -332,7 +332,7 @@ export function buildPredictiveSettingGroups(
   if (personalization) {
     row()
       .setName("Getting started")
-      .setDesc("A four-step tour of the things worth knowing: accepting a suggestion, how typos are fixed, and how undo teaches it.")
+      .setDesc("A short tour of the things worth knowing: accepting a suggestion, how typos are fixed, how undo teaches it, and where your stats live.")
       .addButton((btn) => btn.setButtonText("Show me").onClick(() => personalization.onOpenTutorial()));
     row()
       .setName("Reset settings")

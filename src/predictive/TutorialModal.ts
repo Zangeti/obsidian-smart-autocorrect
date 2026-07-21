@@ -1,11 +1,15 @@
 /**
- * "Getting started": a four-step tour shown once, after the first-run model download.
+ * "Getting started": a five-step tour shown once, after the first-run model download.
  *
- * Deliberately four steps. The plugin has a lot of surface, but only a few things a new user
- * MUST know or they will not understand what is happening to their text: Tab accepts, space
+ * Deliberately short. The plugin has a lot of surface, but only a few things a new user MUST
+ * know or they will not understand what is happening to their text: Tab accepts, space
  * corrects, undo both restores and teaches, and links are offered rather than inserted. Every
  * other feature is discoverable from the settings tab and does not need explaining up front.
  * A longer tour is a tour people click through without reading, which teaches nothing.
+ *
+ * It ends on the stats counter rather than another feature: finishing on what the plugin has
+ * done FOR you is a better last impression than one more thing to learn, and it points at the
+ * status bar, which is the one piece of the UI that is always visible.
  *
  * Each step is one line of text and one picture, because that is what gets read.
  */
@@ -51,9 +55,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     title: "Link notes as you write",
     body:
-      "Text matching a note you already wrote is underlined. Hover to preview it, click to turn " +
-      "it into a link. Nothing is ever inserted without you asking.",
+      "Experimental: text matching a note you already wrote is underlined. Hover to preview, " +
+      "click to link. Nothing is inserted on its own, and you can turn it off in settings.",
     image: "links",
+  },
+  {
+    title: "See what you have saved",
+    body:
+      "The counter in the status bar tracks the keystrokes this has saved you. Click it any " +
+      "time for your streak, time saved, and what the plugin has learned.",
+    image: "stats",
   },
 ];
 
