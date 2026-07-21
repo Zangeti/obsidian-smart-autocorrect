@@ -5,11 +5,17 @@
  * manifest.json and styles.css, so a plugin cannot ship loose image files (the same reason the
  * language model is downloaded separately, and the same approach bmcQr.ts already uses).
  *
- * Each one is a real screenshot of the plugin working, cropped tight to the thing the step is
- * about. Keep them small - they are carried in main.js by every user - and keep them at 2x the
- * displayed width so they stay sharp on a retina display. The tour renders a step without its
- * picture if the entry here is undefined, so an empty slot degrades to text rather than
- * breaking.
+ * The three steps about typing are short ANIMATED clips, because what they are teaching is a
+ * change - a word being accepted, a typo being fixed, an undo putting it back - and a still
+ * frame cannot show a change. The stats step is a still, because nothing moves in it.
+ *
+ * Clips are animated WebP, not GIF. Obsidian is Electron, so it plays them natively, and at
+ * matched quality WebP measured about a quarter the size of the equivalent GIF (a 4s 560px
+ * clip: 14.7 KB WebP vs 48.3 KB GIF), which matters when every user carries these inside
+ * main.js. Encode at 560px wide, 10fps, quality 75; anything more is invisible in a 220px band.
+ *
+ * The tour renders a step without its picture if the entry here is undefined, so an empty slot
+ * degrades to text rather than breaking.
  */
 /**
  * The writing-stats dashboard, cropped to its headline numbers. 698x213, quantised to a
