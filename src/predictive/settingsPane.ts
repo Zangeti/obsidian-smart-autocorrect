@@ -45,35 +45,51 @@ export class RowBuilder {
     return this;
   }
   setClass(v: string): this {
-    this.calls.push((s) => s.setClass(v));
+    this.calls.push((s) => {
+      s.setClass(v);
+    });
     return this;
   }
   addToggle(cb: (c: ToggleComponent) => unknown): this {
-    this.calls.push((s) => s.addToggle((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addToggle((c) => void cb(c));
+    });
     return this;
   }
   addSlider(cb: (c: SliderComponent) => unknown): this {
-    this.calls.push((s) => s.addSlider((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addSlider((c) => void cb(c));
+    });
     return this;
   }
   addText(cb: (c: TextComponent) => unknown): this {
-    this.calls.push((s) => s.addText((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addText((c) => void cb(c));
+    });
     return this;
   }
   addTextArea(cb: (c: TextAreaComponent) => unknown): this {
-    this.calls.push((s) => s.addTextArea((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addTextArea((c) => void cb(c));
+    });
     return this;
   }
   addDropdown(cb: (c: DropdownComponent) => unknown): this {
-    this.calls.push((s) => s.addDropdown((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addDropdown((c) => void cb(c));
+    });
     return this;
   }
   addButton(cb: (c: ButtonComponent) => unknown): this {
-    this.calls.push((s) => s.addButton((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addButton((c) => void cb(c));
+    });
     return this;
   }
   addExtraButton(cb: (c: ExtraButtonComponent) => unknown): this {
-    this.calls.push((s) => s.addExtraButton((c) => void cb(c)));
+    this.calls.push((s) => {
+      s.addExtraButton((c) => void cb(c));
+    });
     return this;
   }
 

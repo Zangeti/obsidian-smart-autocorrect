@@ -64,9 +64,18 @@ class SmartSettingTab extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     return this.plugin.predictive.settingDefinitions(
       () => this.plugin.persist(),
-      // A setting that changes which OTHER settings apply asks for this; update() re-reads
-      // the description and re-renders, which is the declarative equivalent of redrawing.
-      () => this.update(),
+      // A setting that changes which OTHER settings apply asks for this: update() re-reads the
+      // description and re-renders, the declarative equivalent of redrawing.
+      //
+      // Called optionally, and typed structurally, because update() only exists on Obsidian
+      // 1.13+ while this plugin supports 1.11.4. That is not a hypothetical gap: on an older
+      // version the base class has no such method. It is also unreachable there, since this
+      // callback is only ever invoked by the definitions renderer, which older versions do
+      // not have - so the optional call is the honest expression of "newer versions only".
+      () => {
+        const tab = this as { update?: () => void };
+        tab.update?.();
+      },
     );
   }
 

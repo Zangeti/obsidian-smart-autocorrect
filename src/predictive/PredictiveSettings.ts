@@ -3,7 +3,6 @@
  * section to the plugin's settings tab. Every feature is an independent toggle,
  * matching the design.
  */
-import { Setting } from "obsidian";
 import { PaneBuilder, renderPaneGroups } from "./settingsPane";
 import type { PaneGroup } from "./settingsPane";
 import { parseExcludeList } from "./engine/index";

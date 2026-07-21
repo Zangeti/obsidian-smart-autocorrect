@@ -1,6 +1,6 @@
 {
   "name": "smart-autocorrect",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "On-device predictive text, autocorrect and link suggestions for Obsidian, powered by a local neural language model.",
   "main": "main.js",
   "scripts": {
