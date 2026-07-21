@@ -24,6 +24,7 @@ import { ghostTextExtension } from "./GhostText";
 import { tabIndentGuard, indentEditField } from "./tabIndent";
 import { EngagementStore, type EngagementState } from "./EngagementStore";
 import { StatsModal, type StatsSnapshot } from "./StatsModal";
+import { TutorialModal } from "./TutorialModal";
 import { ConfirmModal } from "./ConfirmModal";
 import {
   DEFAULT_PREDICTIVE_SETTINGS,
@@ -467,7 +468,7 @@ export class PredictiveFeature {
     // Offer the one-time model download AFTER the plugin is already usable, so a slow
     // or declined download never delays startup. Asked once; `modelPromptShown` makes
     // "not now" stick, and settings has a button to change your mind.
-    void this.maybeOfferAssets();
+    void this.maybeOfferAssets().then(() => this.maybeShowTutorial());
 
     if (this.enabled) return; // idempotent: don't double-register listeners
     this.enabled = true;
@@ -709,6 +710,11 @@ export class PredictiveFeature {
       name: "Show writing stats",
       callback: () => this.openStats(),
     });
+    this.plugin.addCommand({
+      id: "show-getting-started",
+      name: "Show getting started",
+      callback: () => this.openTutorial(),
+    });
 
     // Replace the plain "add link" flow for a selection with our recommendations (#7). Bind this
     // to your add-link hotkey if you want it to take over that muscle memory.
@@ -901,6 +907,22 @@ export class PredictiveFeature {
     return true;
   }
 
+  /** Open the getting-started tour. Always available from settings and the command palette. */
+  openTutorial(): void {
+    new TutorialModal(this.plugin.app, () => {
+      if (this.settings.tutorialShown) return;
+      this.settings.tutorialShown = true;
+      this.onPersistSettings?.();
+    }).open();
+  }
+
+  /** First run only. Deliberately after the model prompt: a tour of features that are still
+   *  downloading is a tour of things that do not work yet. */
+  private maybeShowTutorial(): void {
+    if (this.settings.tutorialShown) return;
+    this.openTutorial();
+  }
+
   private async maybeOfferAssets(): Promise<void> {
     if (this.settings.modelPromptShown) return;
     if ((await missingAssets(this.plugin)).length === 0) return;
@@ -998,6 +1020,7 @@ export class PredictiveFeature {
           };
         },
         onOpenStats: () => this.openStats(),
+        onOpenTutorial: () => this.openTutorial(),
         onResetStats: () => this.confirmResetStats(),
         onResetSettings: () => this.confirmResetSettings(save, refresh),
         onFactoryReset: () => this.confirmFactoryReset(save, refresh),

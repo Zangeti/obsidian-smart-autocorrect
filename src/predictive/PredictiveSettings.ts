@@ -45,6 +45,10 @@ export interface PredictiveSettings {
    *  for changing your mind. */
   modelPromptShown: boolean;
 
+  /** Whether the getting-started tour has been shown. Shown once, after the first-run
+   *  download; the settings pane can reopen it at any time. */
+  tutorialShown: boolean;
+
   /** channel "trust" weight: high => trust typed chars, low => trust context. */
   beta: number;
   /** spread (in keys) of the geometric keyboard-substitution prior. */
@@ -188,6 +192,8 @@ export interface PersonalizationHandlers {
   getStats: () => { corrections: number; accepts: number; reverts: number; charsSaved: number; streak: number; bestStreak: number; minutesSaved: number; learnListSize: number };
   /** Open the full "writing stats" dashboard. */
   onOpenStats: () => void;
+  /** Re-open the getting-started tour. */
+  onOpenTutorial: () => void;
   /** Reset all statistics (behind a confirmation). */
   onResetStats: () => void;
   /** Reset every SETTING to its default, keeping your personal dictionary and learned
@@ -221,6 +227,7 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   // word replacing a closer typo fix, e.g. "th"→"to"); ≥2 starts losing recovery.
   beta: 1.5,
   modelPromptShown: false,
+  tutorialShown: false,
   channelSigma: 1.0,
   keyboardLayout: "qwerty",
   maxEditCost: 4.0,
@@ -323,6 +330,10 @@ export function buildPredictiveSettingGroups(
     );
 
   if (personalization) {
+    row()
+      .setName("Getting started")
+      .setDesc("A four-step tour of the things worth knowing: accepting a suggestion, how typos are fixed, and how undo teaches it.")
+      .addButton((btn) => btn.setButtonText("Show me").onClick(() => personalization.onOpenTutorial()));
     row()
       .setName("Reset settings")
       .setDesc("Put every option in this menu back to its default. Your personal dictionary and everything the plugin has learned about how you write are kept. Asks you to confirm first.")

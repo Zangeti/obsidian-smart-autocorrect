@@ -19,12 +19,14 @@ import { pathToFileURL } from "node:url";
 
 /** A stand-in for `Setting` that records the calls a row makes onto it. */
 const STUB = `
+export class Modal { constructor(app) { this.app = app; } }
 export class Setting {
   constructor(el) { this.el = el; this.name = ""; this.desc = ""; this.controls = []; this.settingEl = el; if (el && el.__rows) el.__rows.push(this); }
   setName(v) { this.name = v; return this; }
   setDesc(v) { this.desc = v; return this; }
   setHeading() { this.heading = true; return this; }
   setClass() { return this; }
+  setHeading2() { return this; }
   add(kind, cb) { const c = component(kind, this); this.controls.push(c); cb(c); return this; }
   addToggle(cb) { return this.add("toggle", cb); }
   addSlider(cb) { return this.add("slider", cb); }
@@ -51,6 +53,8 @@ function component(kind) {
 const ENTRY = `
 export { buildPredictiveSettingGroups, DEFAULT_PREDICTIVE_SETTINGS } from "../src/predictive/PredictiveSettings.ts";
 export { toSettingDefinitions, renderPaneGroups } from "../src/predictive/settingsPane.ts";
+export { TUTORIAL_STEPS } from "../src/predictive/TutorialModal.ts";
+export { TUTORIAL_IMAGES } from "../src/predictive/tutorialImages.ts";
 export { Setting } from "obsidian";
 `;
 
@@ -80,6 +84,8 @@ async function loadPane() {
     DEFAULT_PREDICTIVE_SETTINGS: Record<string, unknown>;
     toSettingDefinitions: (g: PaneGroup[]) => Definition[];
     Setting: new (el: unknown) => StubSetting;
+    TUTORIAL_STEPS: { title: string; body: string; image?: string }[];
+    TUTORIAL_IMAGES: Record<string, string | undefined>;
   };
 }
 
@@ -148,3 +154,17 @@ interface StubSetting {
   name: string;
   controls: { value: unknown; handler?: (v: unknown) => void }[];
 }
+
+test("the getting-started tour stays short and every picture slot exists", async () => {
+  const pane = await loadPane();
+  const steps = pane.TUTORIAL_STEPS;
+
+  // Four steps is the design: a tour people click through without reading teaches nothing.
+  assert.ok(steps.length >= 3 && steps.length <= 5, `${steps.length} steps is too many to read`);
+  for (const s of steps) {
+    assert.notEqual(s.title.trim(), "", "a tour step lost its title");
+    assert.ok(s.body.length <= 200, `"${s.title}" runs to ${s.body.length} chars; keep it to a sentence`);
+    if (s.image)
+      assert.ok(s.image in pane.TUTORIAL_IMAGES, `"${s.title}" points at a picture slot that does not exist`);
+  }
+});
