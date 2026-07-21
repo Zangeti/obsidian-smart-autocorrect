@@ -5,6 +5,8 @@
 
 Predict your next word, fix typos as you type, and suggest links to your notes. All on your device.
 
+![Smart Autocorrect predicting the next word as you type](docs/demo.gif)
+
 ## What it does
 
 - **Next word, and whole phrases.** A popup offers what you are likely to type next. Press **Tab** to take it, or keep typing to ignore it.
@@ -30,7 +32,7 @@ English only for prediction and capitalisation. The personal dictionary works in
 
 ## Support
 
-If you find this useful:
+If you find this useful, you can [buy me a coffee](https://buymeacoffee.com/zangeti).
 
 <a href="https://buymeacoffee.com/zangeti"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50"></a>
 
