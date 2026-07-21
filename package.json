@@ -1,6 +1,6 @@
 {
   "name": "smart-autocorrect",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "On-device predictive text, autocorrect and link suggestions for Obsidian, powered by a local neural language model.",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "typecheck": "tsgo -noEmit -skipLibCheck",
     "build": "pnpm typecheck && node esbuild.config.mjs production",
     "format": "prettier -l \"**/*.ts\"",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts test-plugin/*.test.ts",
     "mobile:check": "node esbuild.config.mjs production --bundle --platform=browser",
     "pre:push": "pnpm typecheck && pnpm format",
     "verify": "pnpm build && pnpm mobile:check"
@@ -33,7 +33,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260117.1",
     "chokidar": "5.0.0",
     "esbuild": "0.27.2",
-    "obsidian": "1.11.4",
+    "obsidian": "1.13.1",
     "prettier": "3.8.0",
     "prettier-plugin-organize-imports": "4.3.0",
     "tslib": "2.8.1",

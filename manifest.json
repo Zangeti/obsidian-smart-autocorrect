@@ -1,7 +1,7 @@
 {
   "id": "smart-autocorrect",
   "name": "Smart Autocorrect",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.11.4",
   "description": "Predict your next word, fix typos as you type, and suggest links to your notes. All on your device.",
   "author": "Zangeti",

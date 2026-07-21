@@ -3,7 +3,7 @@
  * lifecycle: engine + personalisation store + suggester + autocorrect + settings.
  * The fork's `main.ts` constructs this in onload and calls `enable()`.
  */
-import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile } from "obsidian";
+import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile, type SettingDefinitionItem } from "obsidian";
 import type { Editor, MarkdownFileInfo } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { pathExcluded, termFreq } from "./engine/index";
@@ -27,9 +27,11 @@ import { StatsModal, type StatsSnapshot } from "./StatsModal";
 import { ConfirmModal } from "./ConfirmModal";
 import {
   DEFAULT_PREDICTIVE_SETTINGS,
-  renderPredictiveSettings,
+  buildPredictiveSettingGroups,
+  type AccelerationState,
   type PredictiveSettings,
 } from "./PredictiveSettings";
+import { renderPaneGroups, toSettingDefinitions, type PaneGroup } from "./settingsPane";
 
 const DEV_CORPUS_FILE = "predictive-corpus.txt";
 const PACKED_GLOBAL_FILE = "predictive-global.bin";
@@ -75,6 +77,8 @@ export class PredictiveFeature {
   /** The shared right-docked link chooser, used by the "link selection" command. Created
    *  lazily on first use so the markdown renderer is bound to a live plugin instance. */
   private linkChooserInstance: LinkChooser | null = null;
+  /** Cached answers the settings pane can only get asynchronously; see AccelerationState. */
+  private readonly accelState: AccelerationState = {};
   /** Markdown-render scopes, keyed by the element rendered into (see renderMarkdown). */
   private readonly renderScopes = new Map<HTMLElement, Component>();
   private saveEngagement: () => void;
@@ -965,13 +969,13 @@ export class PredictiveFeature {
     if (this.settings.personalBias) this.rebuildPersonalDebounced();
   }
 
-  renderSettings(containerEl: HTMLElement, save: () => Promise<void>): void {
-    const redraw = () => {
-      containerEl.empty();
-      this.renderSettings(containerEl, save);
-    };
-    renderPredictiveSettings(
-      containerEl,
+  /**
+   * Describe the settings pane once. Obsidian 1.13+ renders it from these groups (via the
+   * setting tab's getSettingDefinitions), older versions draw the same groups imperatively -
+   * see settingsPane.ts. `refresh` re-renders whichever surface is showing it.
+   */
+  settingGroups(save: () => Promise<void>, refresh: () => void): PaneGroup[] {
+    return buildPredictiveSettingGroups(
       this.settings,
       async () => {
         this.onSettingsChanged();
@@ -995,10 +999,10 @@ export class PredictiveFeature {
         },
         onOpenStats: () => this.openStats(),
         onResetStats: () => this.confirmResetStats(),
-        onResetSettings: () => this.confirmResetSettings(save, redraw),
-        onFactoryReset: () => this.confirmFactoryReset(save, redraw),
+        onResetSettings: () => this.confirmResetSettings(save, refresh),
+        onFactoryReset: () => this.confirmFactoryReset(save, refresh),
       },
-      redraw,
+      refresh,
       {
         status: () => this.engine.status(),
         // Re-read word_lstm.bin and rebuild the model so the WASM-SIMD toggle applies
@@ -1008,7 +1012,22 @@ export class PredictiveFeature {
         missingAssets: async () => (await missingAssets(this.plugin)).length,
         installAssets: () => this.installAssets(true),
       },
+      this.accelState,
     );
+  }
+
+  /** Obsidian 1.13+ rendering path: the same description, as setting definitions. */
+  settingDefinitions(save: () => Promise<void>, refresh: () => void): SettingDefinitionItem[] {
+    return toSettingDefinitions(this.settingGroups(save, refresh));
+  }
+
+  /** Pre-1.13 rendering path, driven from the same description. */
+  renderSettings(containerEl: HTMLElement, save: () => Promise<void>): void {
+    const redraw = () => {
+      containerEl.empty();
+      this.renderSettings(containerEl, save);
+    };
+    renderPaneGroups(containerEl, this.settingGroups(save, redraw));
   }
 }
 

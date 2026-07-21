@@ -4,6 +4,8 @@
  * matching the design.
  */
 import { Setting } from "obsidian";
+import { PaneBuilder, renderPaneGroups } from "./settingsPane";
+import type { PaneGroup } from "./settingsPane";
 import { parseExcludeList } from "./engine/index";
 import type { KeyboardLayoutName } from "./engine/index";
 import { BMC_QR_DATA_URI } from "./bmcQr";
@@ -262,8 +264,22 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   replaceLinkMenu: true,
 };
 
-export function renderPredictiveSettings(
-  containerEl: HTMLElement,
+/**
+ * Answers the settings pane needs but can only get asynchronously (is the model installed, is
+ * SIMD actually running). The pane is described synchronously and re-described on every render,
+ * so the answers are cached HERE, outside any one render, and fetched only when missing. A
+ * fetch that resolves calls `redraw`; because the result is cached, that redraw does not fetch
+ * again, so there is no loop. Invalidate a field to ask again.
+ */
+export interface AccelerationState {
+  status?: string;
+  missing?: number;
+  pending?: boolean;
+}
+
+/** Describe the whole pane. Called fresh on every render, so plain `if`s are enough to make a
+ *  setting conditional: the description is rebuilt from current state each time. */
+export function buildPredictiveSettingGroups(
   settings: PredictiveSettings,
   onChange: () => void | Promise<void>,
   personalization?: PersonalizationHandlers,
@@ -273,11 +289,14 @@ export function renderPredictiveSettings(
   /** Lets the WASM-SIMD toggle report the real acceleration state and apply changes
    *  immediately. Absent (e.g. in tests) hides the status line. */
   acceleration?: AccelerationHandlers,
-): void {
+  accelState: AccelerationState = {},
+): PaneGroup[] {
+  const b = new PaneBuilder();
+  const row = () => b.row();
   const commit = () => void onChange();
   const bag = settings as unknown as Record<string, boolean>;
   const toggle = (name: string, desc: string, key: keyof PredictiveSettings) =>
-    new Setting(containerEl)
+    row()
       .setName(name)
       .setDesc(desc)
       .addToggle((t) =>
@@ -287,14 +306,13 @@ export function renderPredictiveSettings(
         }),
       );
 
-  containerEl.createEl("h2", { text: "Smart Predictions & Autocorrect" });
-  containerEl.createEl("p", {
-    text: "Context-aware next-word prediction, phone-style autocorrect, and multi-word phrases. Accept with Tab. Learns from your vault as you write.",
-    cls: "setting-item-description",
-  });
+  b.group("Smart predictions & autocorrect");
+  b.note(
+    "Context-aware next-word prediction, phone-style autocorrect, and multi-word phrases. Accept with Tab. Learns from your vault as you write.",
+  );
 
   // --- master switch + resets, right at the top ---------------------------
-  new Setting(containerEl)
+  row()
     .setName("Enable Smart Autocorrect")
     .setDesc("Master switch. Off = nothing runs (no autocorrect, predictions, ghost text, or link/tag suggestions), but the plugin stays installed and your settings and learned personalization are kept.")
     .addToggle((t) =>
@@ -306,27 +324,24 @@ export function renderPredictiveSettings(
     );
 
   if (personalization) {
-    new Setting(containerEl)
+    row()
       .setName("Reset settings")
       .setDesc("Put every option in this menu back to its default. Your personal dictionary and everything the plugin has learned about how you write are kept. Asks you to confirm first.")
       .addButton((b) => b.setButtonText("Reset settings").onClick(() => personalization.onResetSettings()));
-    new Setting(containerEl)
+    row()
       .setName("Factory reset")
       .setDesc("Wipe everything this plugin stores - settings, personalization, statistics and your personal dictionary. Can't be undone.")
       .addButton((b) => b.setButtonText("Factory reset").setWarning().onClick(() => personalization.onFactoryReset()));
   }
 
   if (!settings.pluginEnabled) {
-    containerEl.createEl("p", {
-      text: "Smart Autocorrect is turned off. Turn the master switch back on to change the options below.",
-      cls: "setting-item-description",
-    });
-    return; // nothing else is active, so don't show a wall of dead options
+    b.note("Smart Autocorrect is turned off. Turn the master switch back on to change the options below.");
+    return b.groups; // nothing else is active, so don't show a wall of dead options
   }
 
-  containerEl.createEl("h3", { text: "Predictions & autocorrect" });
+  b.group("Predictions & autocorrect");
 
-  new Setting(containerEl)
+  row()
     .setName("Predictive text (suggest the next word)")
     .setDesc("Shows likely next words from the recent context. The neural model reads up to about 24 words back; the word-frequency model uses the last one or two. Turn off to disable all suggestions.")
     .addToggle((t) =>
@@ -336,7 +351,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Autocorrect typos when you press space")
     .setDesc("Automatically fixes a misspelt word on space/punctuation (mobile-keyboard style). Undo with Ctrl/Cmd-Z; that also teaches it to leave that word alone.")
     .addToggle((t) =>
@@ -346,7 +361,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Autocorrect strength (information gain)")
     .setDesc(
       "How surprising the typed word must be, versus the best alternative, before it's replaced (Shannon information gain, in nats). The single control for how readily it corrects: lower = corrects even mildly-off words; higher = only fixes words that are very unlikely in context.",
@@ -362,7 +377,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Remove accidental doubled words")
     .setDesc(
       'Delete a repeated function word as you type ("the the" → "the"). Only words that are ' +
@@ -375,7 +390,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Auto-capitalise sentences & proper nouns")
     .setDesc('Capitalises real sentence starts (safe with "U.S.", "e.g.", decimals), fixes "THe"→"The", and learns proper-noun casing ("london"→"London").')
     .addToggle((t) =>
@@ -385,7 +400,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Learn my writing style from this vault")
     .setDesc("Biases predictions toward the words and phrasing you actually use in your notes.")
     .addToggle((t) =>
@@ -395,7 +410,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Vault influence")
     .setDesc("How much your own notes outweigh the general dictionary. Higher = more personalised, lower = more generic.")
     .addSlider((s) =>
@@ -409,7 +424,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Neural vs. word-frequency blend")
     .setDesc("How much the neural (LSTM) next-word model influences suggestions and corrections, vs the word-frequency model. 0 = word-frequency only; 1 = neural only. Only applies when a neural model is installed.")
     .addSlider((s) =>
@@ -423,7 +438,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Trust typing vs. context (β)")
     .setDesc("When a typo is ambiguous: higher trusts the exact letters you typed, lower trusts what the sentence expects.")
     .addSlider((s) =>
@@ -437,7 +452,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Words that aren't sentence ends")
     .setDesc('Comma-separated abbreviations that should NOT trigger capitalisation after their period, e.g. "approx., dept.".')
     .addTextArea((t) =>
@@ -452,7 +467,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Personal dictionary")
     .setDesc(
       'Comma-separated words that are always correct as written, so they are never autocorrected or re-cased. ' +
@@ -472,7 +487,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Suggest personal dictionary words")
     .setDesc("Offer your dictionary words as completions too, not just protect them from autocorrect.")
     .addToggle((t) =>
@@ -482,7 +497,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Undo adds the word to your dictionary")
     .setDesc(
       "When you undo an autocorrection (Ctrl/Cmd-Z), add that word to your personal dictionary " +
@@ -495,7 +510,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Learn abbreviations when you undo a capital")
     .setDesc(
       "When you undo a capital letter that was added after an abbreviation (e.g. undoing the " +
@@ -509,7 +524,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Forget dictionary words removed from the vault")
     .setDesc(
       "When a word in your personal dictionary no longer appears in any note, drop it " +
@@ -522,7 +537,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Filter profanity & NSFW words")
     .setDesc(
       "Never suggest or autocorrect to swear words, slurs, or explicit terms. " +
@@ -538,12 +553,9 @@ export function renderPredictiveSettings(
     );
 
   // --- matching quality ---------------------------------------------------
-  containerEl.createEl("h3", { text: "Accuracy boosters" });
-  containerEl.createEl("p", {
-    text: "Each makes corrections smarter for a different kind of mistake. All recommended on.",
-    cls: "setting-item-description",
-  });
-  new Setting(containerEl)
+  b.group("Accuracy boosters");
+  b.note("Each makes corrections smarter for a different kind of mistake. All recommended on.");
+  row()
     .setName("Keyboard-typo strength")
     .setDesc('How much nearby-key slips are trusted as typos ("teh" → "the"). Higher = more keyboard corrections; 0 = ignore keyboard geometry entirely.')
     .addSlider((s) =>
@@ -556,7 +568,7 @@ export function renderPredictiveSettings(
           commit();
         }),
     );
-  new Setting(containerEl)
+  row()
     .setName("Sound-alike strength")
     .setDesc('How much sound-alike spellings are trusted, independent of keyboard distance ("fone" → "phone", "definately" → "definitely"). Higher = more phonetic corrections; 0 = off.')
     .addSlider((s) =>
@@ -574,7 +586,7 @@ export function renderPredictiveSettings(
   toggle("Smarter context ranking", "Ranks words by how many contexts they appear in, not just raw frequency. Reins in over-eager rare words.", "useContinuation");
   toggle("Learn my keyboard slips", "Adapts the typo model to the specific key mistakes you personally make over time.", "adaptiveKeyboard");
   toggle("Learn from my choices", "Reorders suggestions based on which ones you actually pick.", "learnedRanking");
-  new Setting(containerEl)
+  row()
     .setName("Remember words used in this note")
     .setDesc("Boosts words you've already used in the current note (topic awareness). 0 disables.")
     .addSlider((s) =>
@@ -588,7 +600,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Suggestions shown")
     .setDesc("How many suggestions appear in the popup at once.")
     .addSlider((s) =>
@@ -602,7 +614,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Start suggesting after")
     .setDesc(
       "How many letters of a word you must type before completions appear. 1 = as soon as " +
@@ -620,7 +632,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Accept suggestion with")
     .setDesc(
       "The key that inserts the highlighted suggestion. Only this key accepts; the " +
@@ -635,7 +647,7 @@ export function renderPredictiveSettings(
       });
     });
 
-  new Setting(containerEl)
+  row()
     .setName("Tab indents bullets only from the start")
     .setDesc(
       "Like Word: Tab only indents a list item when the cursor is right after the bullet. " +
@@ -649,7 +661,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Tidy double spaces")
     .setDesc(
       "When you complete a word that has a double space before it, collapse it to one.",
@@ -662,7 +674,7 @@ export function renderPredictiveSettings(
     );
 
   // --- markdown / performance --------------------------------------------
-  containerEl.createEl("h3", { text: "Links & tags" });
+  b.group("Links & tags");
   // One dropdown drives the two linking features so you can pick exactly what you want:
   //  - "tooltips": the ambient link icons beside a block (suggestLinks)
   //  - "menu": our [[ picker replacing Obsidian's (replaceLinkMenu)
@@ -674,7 +686,7 @@ export function renderPredictiveSettings(
         : settings.replaceLinkMenu
           ? "menu"
           : "off";
-  new Setting(containerEl)
+  row()
     .setName("Linking assistance")
     .setDesc(
       "Choose which linking help you want. “Automatic tooltips” drops a small link icon beside a " +
@@ -700,7 +712,7 @@ export function renderPredictiveSettings(
         }),
     );
   if (settings.suggestLinks) {
-    new Setting(containerEl)
+    row()
       .setName("Related-link sensitivity")
       .setDesc(
         "How eager the link icons are. 1 shows an icon only for a very close topical match; " +
@@ -717,7 +729,7 @@ export function renderPredictiveSettings(
             commit();
           }),
       );
-    new Setting(containerEl)
+    row()
       .setName("Minimum block length for a link")
       .setDesc(
         "A paragraph or list must have at least this many words before it can show a link icon. " +
@@ -749,20 +761,18 @@ export function renderPredictiveSettings(
       "body get removed, so turn this off if you tag notes only in frontmatter.",
     "syncFrontmatterTags",
   );
-  containerEl.createEl("p", {
-    text:
-      "Links go inline where a concept is mentioned; tags are typed with #. For a full list at " +
+  b.note(
+    "Links go inline where a concept is mentioned; tags are typed with #. For a full list at " +
       "once, run \"Suggest links in this note\" or \"Suggest tags for this note\" (Ctrl/Cmd-P).",
-    cls: "setting-item-description",
-  });
+  );
 
-  containerEl.createEl("h3", { text: "Where it works & performance" });
+  b.group("Where it works & performance");
   toggle(
     "Don't touch code, math, links & tags",
     "Never predict or autocorrect inside code blocks, LaTeX math, [[wikilinks]], URLs, #tags, or frontmatter, so it can't corrupt them.",
     "markdownAware",
   );
-  new Setting(containerEl)
+  row()
     .setName("Excluded folders & files")
     .setDesc(
       "Files where predictions and autocorrect never run, one per line. A folder name " +
@@ -783,7 +793,7 @@ export function renderPredictiveSettings(
     "Run prediction, autocorrect and model building in a background worker so typing never stutters. Turn off only to debug.",
     "offMainThread",
   );
-  new Setting(containerEl)
+  row()
     .setName("WASM SIMD acceleration")
     .setDesc(
       "Run the neural model on a fast in-browser SIMD kernel (about 10x quicker than " +
@@ -795,58 +805,63 @@ export function renderPredictiveSettings(
         settings.wasmSimd = v;
         await onChange(); // persist + push the setting into the worker FIRST
         await acceleration?.reload(); // then re-init the model on/off the kernel now
+        accelState.status = undefined; // the answer just changed, so ask the engine again
         redraw?.(); // re-render so the status line reflects what actually happened
       }),
     );
   // Live status - the whole point of the setting: state what IS happening, never leave
-  // a scalar fallback silent.
-  const simdStatus = containerEl.createEl("p", {
-    cls: "setting-item-description",
-    text: "Checking acceleration…",
-  });
+  // a scalar fallback silent. Fetched once and cached (see AccelerationState), because the
+  // pane is re-described on every render and re-asking each time would loop.
+  if (acceleration) {
+    if (accelState.status === undefined && !accelState.pending) {
+      accelState.pending = true;
+      void Promise.all([acceleration.status(), acceleration.missingAssets()])
+        .then(([st, missing]) => {
+          accelState.status = !st.lstmLoaded
+            ? "The neural model isn't installed (word_lstm.bin missing), so there is nothing to accelerate. Predictions use the word-frequency model only."
+            : !settings.wasmSimd
+              ? "Turned off. The neural model is running on the slower scalar-JS path by your choice."
+              : st.accelerated
+                ? "Active. The neural model is running on the WASM-SIMD kernel."
+                : "Enabled, but this device has no WASM-SIMD support, so the neural model fell back to the slower scalar-JS path (older mobile webviews; needs iOS 16.4+ on iPhone/iPad).";
+          accelState.missing = missing;
+        })
+        .catch(() => {
+          accelState.status = "Could not read acceleration status.";
+          accelState.missing = 0;
+        })
+        .finally(() => {
+          accelState.pending = false;
+          redraw?.();
+        });
+    }
+    b.note(accelState.status ?? "Checking acceleration…");
+  }
   // Offer the one-time model download here too: a user who declined the first-run
   // prompt (or whose download failed) needs a way back that isn't reinstalling.
-  if (acceleration) {
-    void acceleration.missingAssets().then((n) => {
-      if (n === 0) return;
-      new Setting(containerEl)
-        .setName("Download language model")
-        .setDesc(
-          `${n} model file${n === 1 ? " is" : "s are"} missing, so predictions are running ` +
-            `on your vault alone. The model is downloaded once from the plugin's GitHub ` +
-            `release; nothing is ever uploaded.`,
-        )
-        .addButton((b) =>
-          b
-            .setButtonText("Download")
-            .setCta()
-            .onClick(() => {
-              void acceleration.installAssets().then((ok) => {
-                if (ok) redraw?.();
-              });
-            }),
-        );
-    });
+  if (acceleration && accelState.missing) {
+    const n = accelState.missing;
+    row()
+      .setName("Download language model")
+      .setDesc(
+        `${n} model file${n === 1 ? " is" : "s are"} missing, so predictions are running ` +
+          `on your vault alone. The model is downloaded once from the plugin's GitHub ` +
+          `release; nothing is ever uploaded.`,
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText("Download")
+          .setCta()
+          .onClick(() => {
+            void acceleration.installAssets().then((ok) => {
+              if (!ok) return;
+              accelState.status = undefined; // a model just landed: re-read both answers
+              redraw?.();
+            });
+          }),
+      );
   }
-  if (acceleration) {
-    acceleration
-      .status()
-      .then((s) => {
-        simdStatus.textContent = !s.lstmLoaded
-          ? "The neural model isn't installed (word_lstm.bin missing), so there is nothing to accelerate. Predictions use the word-frequency model only."
-          : !settings.wasmSimd
-            ? "Turned off. The neural model is running on the slower scalar-JS path by your choice."
-            : s.accelerated
-              ? "Active. The neural model is running on the WASM-SIMD kernel."
-              : "Enabled, but this device has no WASM-SIMD support, so the neural model fell back to the slower scalar-JS path (older mobile webviews; needs iOS 16.4+ on iPhone/iPad).";
-      })
-      .catch(() => {
-        simdStatus.textContent = "Could not read acceleration status.";
-      });
-  } else {
-    simdStatus.remove();
-  }
-  new Setting(containerEl)
+  row()
     .setName("Suggestion style")
     .setDesc(
       "How completions appear. A popup list lets you pick from a few options; inline ghost text " +
@@ -861,7 +876,7 @@ export function renderPredictiveSettings(
           commit();
         }),
     );
-  new Setting(containerEl)
+  row()
     .setName("Keyboard layout")
     .setDesc("Used by the typo model's key-distance prior.")
     .addDropdown((d) =>
@@ -875,47 +890,50 @@ export function renderPredictiveSettings(
     );
 
   // --- personalization management ----------------------------------------
-  if (!personalization) return;
-  containerEl.createEl("h3", { text: "Personalization" });
+  if (!personalization) return b.groups;
+  b.group("Personalization");
   const stats = personalization.getStats();
   // Headline gamification stat: characters saved, streak, and estimated time saved.
-  const saved = containerEl.createEl("p", { cls: "setting-item-description" });
-  saved.createEl("strong", { text: `⌨️ ${stats.charsSaved.toLocaleString()}` });
-  const hrs =
-    stats.minutesSaved >= 60
-      ? `${(stats.minutesSaved / 60).toFixed(1)} hrs`
-      : `${Math.round(stats.minutesSaved)} min`;
-  saved.appendText(` keystrokes saved · ≈ ${hrs} of typing`);
-  if (stats.streak > 1)
-    saved.appendText(` · 🔥 ${stats.streak}-day streak (best ${stats.bestStreak})`);
+  b.custom("Keystrokes saved", (el) => {
+    const saved = el.createEl("p", { cls: "setting-item-description" });
+    saved.createEl("strong", { text: `⌨️ ${stats.charsSaved.toLocaleString()}` });
+    const hrs =
+      stats.minutesSaved >= 60
+        ? `${(stats.minutesSaved / 60).toFixed(1)} hrs`
+        : `${Math.round(stats.minutesSaved)} min`;
+    saved.appendText(` keystrokes saved · ≈ ${hrs} of typing`);
+    if (stats.streak > 1)
+      saved.appendText(` · 🔥 ${stats.streak}-day streak (best ${stats.bestStreak})`);
+  });
 
-  new Setting(containerEl)
+  row()
     .setName("Writing stats")
     .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
     .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
     .addButton((b) => b.setButtonText("Reset statistics").setWarning().onClick(() => personalization.onResetStats()));
 
   // Support / Buy me a coffee - placed next to the feel-good stat.
-  const support = containerEl.createDiv({ cls: "smart-autocorrect-support" });
-  const supportText = support.createEl("p", { cls: "setting-item-description" });
-  supportText.appendText("Enjoying the plugin? You can ");
-  const link = supportText.createEl("a", { text: "buy me a coffee ☕", href: BMC_URL });
-  link.setAttribute("target", "_blank");
-  link.setAttribute("rel", "noopener");
-  supportText.appendText(", or scan the code.");
-  const qr = support.createEl("img", { cls: "smart-autocorrect-qr" });
-  qr.src = BMC_QR_DATA_URI;
-  qr.alt = "Buy Me a Coffee QR code";
-  qr.width = 130;
-  qr.height = 130;
-  containerEl.createEl("p", {
-    text: settings.personalizationEnabled
+  b.custom("Support, buy me a coffee", (el) => {
+    const support = el.createDiv({ cls: "smart-autocorrect-support" });
+    const supportText = support.createEl("p", { cls: "setting-item-description" });
+    supportText.appendText("Enjoying the plugin? You can ");
+    const link = supportText.createEl("a", { text: "buy me a coffee ☕", href: BMC_URL });
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener");
+    supportText.appendText(", or scan the code.");
+    const qr = support.createEl("img", { cls: "smart-autocorrect-qr" });
+    qr.src = BMC_QR_DATA_URI;
+    qr.alt = "Buy Me a Coffee QR code";
+    qr.width = 130;
+    qr.height = 130;
+  });
+  b.note(
+    settings.personalizationEnabled
       ? `So far: ${stats.accepts} suggestions accepted, ${stats.corrections} typos fixed, ${stats.reverts} undone, and ${stats.learnListSize} of your words on the don't-touch list. All of this lives in personalization.json in the plugin folder, travels with your vault, and stays out of your notes.`
       : `Personalisation is off, so nothing new is being learned or used right now. Your ${stats.accepts} past accepts, ${stats.corrections} fixes and ${stats.reverts} undos are still saved and will kick back in the moment you turn it on.`,
-    cls: "setting-item-description",
-  });
+  );
 
-  new Setting(containerEl)
+  row()
     .setName("Personalise to me")
     .setDesc(
       "Learn from your corrections and accepts, and use what was learned. Turn off to " +
@@ -931,7 +949,7 @@ export function renderPredictiveSettings(
       }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Share file (vault path)")
     .setDesc(
       "Only used by the Export/Import buttons below. This is not where personalization " +
@@ -946,7 +964,7 @@ export function renderPredictiveSettings(
         }),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Export / import personalization")
     .addButton((b) =>
       b.setButtonText("Export").onClick(() => void personalization.onExport(settings.personalizationSharePath)),
@@ -958,7 +976,7 @@ export function renderPredictiveSettings(
       b.setButtonText("Import (merge)").onClick(() => void personalization.onImport(settings.personalizationSharePath, true)),
     );
 
-  new Setting(containerEl)
+  row()
     .setName("Reset personalization")
     .setDesc("Clear all learned adaptation (keyboard model, ranking, protected words).")
     .addButton((b) =>
@@ -967,4 +985,24 @@ export function renderPredictiveSettings(
         .setWarning()
         .onClick(() => void personalization.onReset()),
     );
+  return b.groups;
+}
+
+/**
+ * Pre-1.13 entry point, kept so the pane still renders on the Obsidian versions this plugin
+ * supports (manifest minAppVersion is below 1.13). Same groups, drawn imperatively.
+ */
+export function renderPredictiveSettings(
+  containerEl: HTMLElement,
+  settings: PredictiveSettings,
+  onChange: () => void | Promise<void>,
+  personalization?: PersonalizationHandlers,
+  redraw?: () => void,
+  acceleration?: AccelerationHandlers,
+  accelState: AccelerationState = {},
+): void {
+  renderPaneGroups(
+    containerEl,
+    buildPredictiveSettingGroups(settings, onChange, personalization, redraw, acceleration, accelState),
+  );
 }
