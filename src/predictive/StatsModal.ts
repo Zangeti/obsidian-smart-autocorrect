@@ -20,6 +20,7 @@ export interface StatsSnapshot {
   accepts: number;
   reverts: number;
   learnedWords: number;
+  alternativesAccepted: number;
   nextMilestone: number | null;
   allMilestones: number[];
 }
@@ -112,6 +113,7 @@ export class StatsModal extends Modal {
     row("Suggestions accepted", s.accepts);
     row("Typos fixed", s.corrections);
     row("Corrections you undid", s.reverts);
+    row("Word alternatives used", s.alternativesAccepted);
     row("Words in your personal dictionary", s.learnedWords);
 
     // Support / Buy me a coffee.

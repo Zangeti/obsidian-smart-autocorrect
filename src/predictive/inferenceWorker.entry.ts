@@ -50,6 +50,7 @@ function call(op: string, args: unknown[]): unknown {
     case "embed": return c.embed(args[0] as string);
     case "embedDim": return c.embedDim();
     case "rarities": return c.rarities(args[0] as string[]);
+    case "wordAlternatives": return c.wordAlternatives(args[0] as string, args[1] as number);
     default: throw new Error(`unknown op ${op}`);
   }
 }

@@ -66,6 +66,11 @@ export class PredictiveEngineController {
     return this.client.rarities(words);
   }
 
+  /** More eloquent / academic alternatives for a single word (right-click "Suggest alternatives"). */
+  wordAlternatives(word: string, k = 6): Promise<string[]> {
+    return this.client.wordAlternatives(word, k);
+  }
+
   private async refreshStatus(): Promise<void> {
     try {
       this.isReady = (await this.client.status()).ready;

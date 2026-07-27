@@ -96,6 +96,40 @@ function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
+/**
+ * Seed pairs (formal, casual) for the "suggest alternatives" steering direction, computed as
+ * mean(formal) − mean(casual) over the embedding. Ranking a word's nearest neighbours along this
+ * direction surfaces more sophisticated wording ("use" → utilize, "help" → facilitate). Only
+ * pairs whose BOTH words are in the vocab contribute; the direction is computed once and cached.
+ */
+const ELOQUENCE_PAIRS: [string, string][] = [
+  ["utilize", "use"], ["commence", "start"], ["demonstrate", "show"], ["numerous", "many"],
+  ["obtain", "get"], ["facilitate", "help"], ["subsequently", "later"], ["significant", "big"],
+  ["approximately", "about"], ["fundamental", "basic"], ["acquire", "buy"], ["endeavor", "try"],
+  ["comprehend", "understand"], ["assist", "help"], ["sufficient", "enough"], ["additional", "more"],
+  ["require", "need"], ["purchase", "buy"], ["inquire", "ask"], ["construct", "build"],
+  ["numerous", "lots"], ["therefore", "so"], ["however", "but"], ["regarding", "about"],
+];
+
+/** Coarse inflection class, so an alternative keeps the query's number/tense (a plural stays
+ *  plural, a past tense stays past). Deliberately minimal - the productive endings only. */
+function inflectionClass(w: string): "ing" | "ed" | "s" | "" {
+  if (w.length >= 5 && w.endsWith("ing")) return "ing";
+  if (w.length >= 4 && w.endsWith("ed")) return "ed";
+  if (w.length >= 4 && w.endsWith("s") && !w.endsWith("ss")) return "s";
+  return "";
+}
+
+/** Are `a` and `b` the same root word ("use"/"uses"/"usage", "help"/"helpful")? Such forms are
+ *  not ALTERNATIVES to each other, so they're dropped from the suggestions. */
+function sameLemma(a: string, b: string): boolean {
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  if (l.startsWith(s) && l.length - s.length <= 4) return true;
+  let i = 0;
+  while (i < s.length && i < l.length && s[i] === l[i]) i++;
+  return i >= 4; // a shared 4+ character root
+}
+
 /** Cached per-context state: shortlisted logits, their normaliser, and the full
  *  per-layer recurrent state. The hidden state lets a rare word (id >= nTop) be
  *  scored exactly on demand, and lets phrasesFor() continue stepping from this
@@ -454,6 +488,110 @@ export class LstmLanguageModel implements LanguageModel {
     if (id === undefined) return 0.9;
     if (id === 0) return 0; // <unk>
     return Math.log(id + 1) / Math.log(this.V + 1);
+  }
+
+  /** L2 norm of every embedding row, computed once and cached (for cosine similarity). */
+  private _rowNorms: Float32Array | null = null;
+  private rowNorms(): Float32Array {
+    if (this._rowNorms) return this._rowNorms;
+    const { V, dim } = this, q = this.embQ, sw = this.scaleW;
+    const n = new Float32Array(V);
+    for (let i = 0; i < V; i++) {
+      const b = i * dim, s = sw[i];
+      let acc = 0;
+      for (let a = 0; a < dim; a++) { const x = q[b + a] * s; acc += x * x; }
+      n[i] = Math.sqrt(acc) || 1;
+    }
+    this._rowNorms = n;
+    return n;
+  }
+
+  /** The formal↔casual steering direction from ELOQUENCE_PAIRS, unit-normalised, or null when the
+   *  seed words aren't in this vocab. Computed once. */
+  private _eloqDir: Float32Array | null = null;
+  private _eloqTried = false;
+  private eloquenceDir(): Float32Array | null {
+    if (this._eloqTried) return this._eloqDir;
+    this._eloqTried = true;
+    const { dim } = this, q = this.embQ, sw = this.scaleW;
+    const dir = new Float32Array(dim);
+    let cnt = 0;
+    const add = (w: string, sign: number): void => {
+      const id = this.wid.get(w);
+      if (id === undefined) return;
+      const b = id * dim, s = sw[id];
+      let nn = 0;
+      for (let a = 0; a < dim; a++) { const x = q[b + a] * s; nn += x * x; }
+      const inv = sign / (Math.sqrt(nn) || 1);
+      for (let a = 0; a < dim; a++) dir[a] += q[b + a] * s * inv;
+    };
+    for (const [f, c] of ELOQUENCE_PAIRS) {
+      if (this.wid.get(f) === undefined || this.wid.get(c) === undefined) continue;
+      add(f, +1); add(c, -1); cnt++;
+    }
+    if (cnt === 0) return (this._eloqDir = null);
+    let n = 0;
+    for (const x of dir) n += x * x;
+    const inv = 1 / (Math.sqrt(n) || 1);
+    for (let a = 0; a < dim; a++) dir[a] *= inv;
+    return (this._eloqDir = dir);
+  }
+
+  /**
+   * Up to `k` near-synonym alternatives for `word`, biased toward more sophisticated / eloquent
+   * wording - the "suggest alternatives" right-click action. It ranks the word's nearest
+   * neighbours in embedding space (words used in similar contexts) by how far they lie along a
+   * formal-vs-casual direction, so "use" → utilize/employ, "help" → facilitate/assist. Inflection
+   * is matched to the query and same-root forms are dropped, since those aren't alternatives.
+   *
+   * On-demand only (never per keystroke): it scans the whole vocab, ~V·dim MACs, tens of ms.
+   * Lowercase surfaces; the caller cases them to match the original word.
+   */
+  suggestAlternatives(word: string, k = 6): string[] {
+    const lower = word.toLowerCase();
+    const id = this.wid.get(lower);
+    if (id === undefined) return [];
+    const { dim, V } = this, q = this.embQ, sw = this.scaleW;
+    // Unit-normalised query vector.
+    const qv = new Float32Array(dim);
+    {
+      const b = id * dim, s = sw[id];
+      let nn = 0;
+      for (let a = 0; a < dim; a++) { qv[a] = q[b + a] * s; nn += qv[a] * qv[a]; }
+      const inv = 1 / (Math.sqrt(nn) || 1);
+      for (let a = 0; a < dim; a++) qv[a] *= inv;
+    }
+    const norms = this.rowNorms();
+    const dir = this.eloquenceDir();
+    const proj = (rowId: number): number => {
+      if (!dir) return 0;
+      const b = rowId * dim, s = sw[rowId];
+      let d = 0;
+      for (let a = 0; a < dim; a++) d += q[b + a] * s * dir[a];
+      return d / norms[rowId];
+    };
+    const qProj = proj(id);
+    const cls = inflectionClass(lower);
+    const cand: { w: string; id: number; cos: number; p: number }[] = [];
+    for (let i = 1; i < V; i++) { // skip <unk> at 0
+      if (i === id) continue;
+      const w = this.vocab[i];
+      if (!/^[a-z]+$/.test(w)) continue; // plain lowercase words only
+      const b = i * dim, s = sw[i];
+      let d = 0;
+      for (let a = 0; a < dim; a++) d += qv[a] * q[b + a];
+      const cos = (d * s) / norms[i];
+      if (cos < 0.35) continue; // not similar enough to be an alternative
+      if (inflectionClass(w) !== cls) continue; // keep number/tense consistent
+      if (sameLemma(lower, w)) continue; // not an inflection/derivation of the same word
+      cand.push({ w, id: i, cos, p: proj(i) });
+    }
+    // Prefer neighbours MORE eloquent than the word, ranked by the direction; if none are, fall
+    // back to the plain nearest neighbours so the action always offers something useful.
+    const moreFormal = cand.filter((c) => c.p > qProj);
+    const pool = moreFormal.length ? moreFormal : cand;
+    pool.sort((a, b) => (dir ? b.p - a.p : 0) || b.cos - a.cos);
+    return pool.slice(0, k).map((c) => c.w);
   }
 
   /**

@@ -221,6 +221,12 @@ export class EngineCore {
     return words.map((w) => this.lstm!.rarity(w));
   }
 
+  /** More eloquent / academic alternatives for a single word (the "suggest alternatives"
+   *  action). Needs the neural model's embedding; empty when it isn't loaded. */
+  wordAlternatives(word: string, k = 6): string[] {
+    return this.lstm ? this.lstm.suggestAlternatives(word, k) : [];
+  }
+
   private p() {
     return this.personalization;
   }

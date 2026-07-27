@@ -177,6 +177,8 @@ export interface PredictiveSettings {
   minLinkWords: number;
   /** Suggest relevant tags as you type `#` (Obsidian-native tag autocomplete). */
   suggestTagsOnHash: boolean;
+  /** Offer "Suggest alternatives" when right-clicking a word (more eloquent wording). */
+  suggestAlternatives: boolean;
   /** Keep the note's frontmatter `tags:` in sync with the #tags used in its body: add a
    *  tag when it first appears inline, remove it when its last inline use is deleted. */
   syncFrontmatterTags: boolean;
@@ -266,6 +268,7 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   relatedSensitivity: 3,
   minLinkWords: 12,
   suggestTagsOnHash: true,
+  suggestAlternatives: true,
   syncFrontmatterTags: true,
   replaceLinkMenu: true,
 };
@@ -419,6 +422,12 @@ export function buildPredictiveSettingGroups(
         commit();
       }),
     );
+
+  toggle(
+    "Suggest alternatives on right-click",
+    "Adds a “Suggest alternatives” item to the right-click menu, offering more eloquent, academic wording for the word you clicked.",
+    "suggestAlternatives",
+  );
 
   row()
     .setName("Vault influence")

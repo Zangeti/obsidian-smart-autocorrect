@@ -127,6 +127,7 @@ export class InferenceClient {
   embed(text: string): Promise<number[] | null> { return this.call("embed", [text]); }
   embedDim(): Promise<number> { return this.call("embedDim", []); }
   rarities(words: string[]): Promise<number[]> { return this.call("rarities", [words]); }
+  wordAlternatives(word: string, k: number): Promise<string[]> { return this.call("wordAlternatives", [word, k]); }
 
   dispose(): void {
     this.worker?.terminate();

@@ -4,9 +4,9 @@
  * The fork's `main.ts` constructs this in onload and calls `enable()`.
  */
 import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile, type SettingDefinitionItem } from "obsidian";
-import type { Editor, MarkdownFileInfo } from "obsidian";
+import type { Editor, EditorPosition, MarkdownFileInfo } from "obsidian";
 import type { EditorView } from "@codemirror/view";
-import { pathExcluded, termFreq } from "./engine/index";
+import { pathExcluded, termFreq, matchCase } from "./engine/index";
 import { PredictiveEngineController } from "./PredictiveEngineController";
 import { LinkIndex } from "./LinkIndex";
 import { linkSuggestExtension } from "./linkSuggest";
@@ -226,6 +226,7 @@ export class PredictiveFeature {
       accepts: st.accepts,
       reverts: st.reverts,
       learnedWords: this.settings.userDictionary.length,
+      alternativesAccepted: e.alternativesAccepted,
       nextMilestone: e.nextMilestone,
       allMilestones: e.allMilestones,
     };
@@ -368,6 +369,33 @@ export class PredictiveFeature {
     this.onSettingsChanged();
     this.onPersistSettings?.();
     new Notice(`Added “${w}” to your personal dictionary`);
+  }
+
+  /** The range a "suggest alternatives" rewrite should replace: the current selection if there
+   *  is one, otherwise the word under the cursor. */
+  private selectionOrWordRange(editor: Editor): { from: EditorPosition; to: EditorPosition } {
+    if (editor.getSelection()) return { from: editor.getCursor("from"), to: editor.getCursor("to") };
+    const cur = editor.getCursor();
+    const line = editor.getLine(cur.line);
+    const isW = (c: string) => /[A-Za-z'-]/.test(c);
+    let s = cur.ch;
+    let e = cur.ch;
+    while (s > 0 && isW(line[s - 1])) s--;
+    while (e < line.length && isW(line[e])) e++;
+    return { from: { line: cur.line, ch: s }, to: { line: cur.line, ch: e } };
+  }
+
+  /** Apply a chosen alternative in place, move the caret after it, and count it in the stats. */
+  private applyAlternative(
+    editor: Editor,
+    range: { from: EditorPosition; to: EditorPosition },
+    replacement: string,
+  ): void {
+    editor.replaceRange(replacement, range.from, range.to);
+    editor.setCursor({ line: range.from.line, ch: range.from.ch + replacement.length });
+    this.engagement.recordAlternative();
+    this.renderStatus();
+    this.saveEngagement();
   }
 
   /** Reverting a sentence-initial capitalisation after "word." teaches that "word" is an
@@ -675,6 +703,34 @@ export class PredictiveFeature {
               .setTitle(`Add “${word}” to personal dictionary`)
               .setIcon("book-plus")
               .onClick(() => void this.addWordExplicit(word)),
+          );
+        }
+        // Suggest more eloquent / academic alternatives for the word (needs the neural model).
+        if (this.settings.suggestAlternatives && this.engine.ready && /^[A-Za-z][A-Za-z'-]*$/.test(word)) {
+          const range = this.selectionOrWordRange(editor);
+          menu.addItem((item) =>
+            item
+              .setTitle("Suggest alternatives")
+              .setIcon("wand-2")
+              .onClick(async (evt) => {
+                let alts: string[] = [];
+                try {
+                  alts = await this.engine.wordAlternatives(word, 6);
+                } catch {
+                  alts = [];
+                }
+                if (alts.length === 0) {
+                  new Notice(`No alternatives found for “${word}”`);
+                  return;
+                }
+                const sub = new Menu();
+                for (const alt of alts) {
+                  const cased = matchCase(word, alt);
+                  sub.addItem((mi) => mi.setTitle(cased).onClick(() => this.applyAlternative(editor, range, cased)));
+                }
+                if (evt instanceof MouseEvent) sub.showAtMouseEvent(evt);
+                else sub.showAtPosition({ x: 0, y: 0 });
+              }),
           );
         }
       }),

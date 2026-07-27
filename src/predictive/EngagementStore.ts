@@ -22,10 +22,12 @@ export interface EngagementState {
   streak: number;
   bestStreak: number;
   milestones: number[]; // thresholds already celebrated
+  /** How many times a "suggest alternatives" rewording was accepted. */
+  alternativesAccepted: number;
 }
 
 function emptyEngagement(): EngagementState {
-  return { totalSaved: 0, todaySaved: 0, lastActiveDay: "", streak: 0, bestStreak: 0, milestones: [] };
+  return { totalSaved: 0, todaySaved: 0, lastActiveDay: "", streak: 0, bestStreak: 0, milestones: [], alternativesAccepted: 0 };
 }
 
 /** Local calendar day as YYYY-MM-DD (so streaks roll over at the user's midnight). */
@@ -62,6 +64,11 @@ export class EngagementStore {
   get nextMilestone(): number | null { return MILESTONES.find((m) => this.s.totalSaved < m) ?? null; }
   /** All milestone thresholds (reached or not), for rendering a progress ladder. */
   get allMilestones(): number[] { return [...MILESTONES]; }
+
+  /** How many "suggest alternatives" rewordings the user has accepted. */
+  get alternativesAccepted(): number { return this.s.alternativesAccepted ?? 0; }
+  /** Count one accepted rewording. */
+  recordAlternative(): void { this.s.alternativesAccepted = (this.s.alternativesAccepted ?? 0) + 1; }
 
   toState(): EngagementState { return { ...this.s, milestones: [...this.s.milestones] }; }
 

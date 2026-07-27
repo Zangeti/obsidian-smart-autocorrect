@@ -231,6 +231,18 @@ test("the bilinear term is loaded and applied to the case decision", () => {
   assert.ok(differed, "bilinear weights changed no decision – the term is not being applied");
 });
 
+test("suggestAlternatives: returns real vocab words, never the query, [] for OOV", () => {
+  const m = LstmLanguageModel.fromBuffer(buildBin({
+    vocab: ["<unk>", "use", "help", "big", "the", "quick", "brown", "fox", "cat", "dog"],
+  }));
+  assert.deepEqual(m.suggestAlternatives("zzzznotaword", 5), []); // out of vocab
+  const alts = m.suggestAlternatives("use", 5);
+  assert.ok(Array.isArray(alts));
+  assert.ok(alts.length <= 5);
+  assert.ok(!alts.includes("use"), "never suggests the query itself");
+  for (const a of alts) assert.ok(m.hasWord(a), `alternative "${a}" must be a real vocab word`);
+});
+
 test("a word outside the vocab is returned untouched", () => {
   const m = LstmLanguageModel.fromBuffer(buildBin({ vocab: ["<unk>", "the"] }));
   assert.equal(m.renderCased("Zzyzx", ["a"]), "Zzyzx");
