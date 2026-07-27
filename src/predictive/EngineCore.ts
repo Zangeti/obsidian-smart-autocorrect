@@ -27,6 +27,7 @@ import {
   decideCorrection,
   decideRespace,
   tokenizeWords,
+  joinPhraseSurface,
   isProfane,
   evaluate,
   LstmLanguageModel,
@@ -403,6 +404,13 @@ export class EngineCore {
   }
 
   setActiveDocument(text: string): void {
+    // Reseed the within-document cache from the CURRENT text of the note. This runs on note
+    // switch AND (debounced) as the active note is edited, so the cache tracks what the
+    // document now says rather than drifting: setDocument() clear()s first. Without the
+    // periodic reseed the cache was seeded once on open and then only ever GREW (observe() on
+    // every accept), so deleted paragraphs and long-session churn kept being injected as
+    // boosted candidates until a reload/note-switch cleared them - the "odd suggestion like
+    // 'Tuberculosis' after a while of typing, gone after reloading the plugin" drift (#1).
     this.cache?.setDocument(tokenizeWords(text));
   }
 
@@ -550,7 +558,9 @@ export class EngineCore {
       // next-word menu after the space.
       if (includePhrases && maxWords >= 2 && i < BEAM && typed.length < s.word.length) {
         for (const p of this.lstm.phraseCandidates(context, s.word, maxWords, BEAM))
-          consider(p.words.join(" "), "phrase", pSeed * Math.exp(p.extLogProb));
+          // joinPhraseSurface re-attaches split contraction/possessive clitics with an
+          // apostrophe ("Roosevelt","s" -> "Roosevelt's"), which the plain space-join mangled.
+          consider(joinPhraseSurface(p.words), "phrase", pSeed * Math.exp(p.extLogProb));
       }
     });
 
@@ -563,12 +573,30 @@ export class EngineCore {
     // and run a small DP over "how many items placed so far" (= the next slot index) that
     // decides include/skip for each - O(N·k), exact. An item whose saving cannot cover its
     // slot cost is simply left out, which also caps the menu length naturally.
-    return orderMenu([...best.values()], k).map(({ insert, kind, p, saved }, pos) => ({
+    const menu = orderMenu([...best.values()], k);
+
+    // Top up a SPARSE menu from the bundled word list (#8). When the context-driven engine
+    // has fewer than `k` real words to offer, fill the empty slots with dictionary words that
+    // start with what was typed - these come from the 274k WordOracle, which knows far more
+    // words than the 120k LM vocab, so a partially-typed uncommon word still gets completions.
+    // Added AFTER the ranked menu with a tiny score so they always sit below genuine predictions.
+    const out = menu.map(({ insert, kind, p, saved }, pos) => ({
       insert,
       display: insert,
       kind,
       score: p * Math.max(0, saved - pos),
     }));
+    if (typed && out.length < k) {
+      const shown = new Set(out.map((i) => i.insert.toLowerCase()));
+      shown.add(typed.toLowerCase());
+      for (const w of this.wordOracle.completions(typed, k - out.length + 4)) {
+        if (out.length >= k) break;
+        if (shown.has(w) || this.blockedSurface(w)) continue;
+        shown.add(w);
+        out.push({ insert: w, display: w, kind: "word", score: 1e-6 / (out.length + 1) });
+      }
+    }
+    return out;
   }
 
   decide(typed: string, context: string[]): CorrectionDecision {

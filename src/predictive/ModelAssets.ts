@@ -144,8 +144,9 @@ export class AssetConsentModal extends Modal {
     contentEl.createEl("h2", { text: "Download the language model" });
     contentEl.createEl("p", {
       text:
-        `Smart Autocorrect needs its language model (${totalMegabytes(this.assets)} MB). Obsidian's ` +
-        `installer can't carry files this large, so it is downloaded once from GitHub.`,
+        `To give you the best predictions, Smart Autocorrect uses a language model ` +
+        `(${totalMegabytes(this.assets)} MB). It's too big to ship inside the plugin, so it's ` +
+        `fetched once from GitHub and then runs entirely on your device.`,
     });
     const list = contentEl.createEl("ul");
     for (const a of this.assets) {
@@ -153,14 +154,8 @@ export class AssetConsentModal extends Modal {
     }
     contentEl.createEl("p", {
       text:
-        "This is the only network request the plugin makes. Nothing is uploaded, and each " +
-        "file is checksum-verified before use.",
-    });
-    contentEl.createEl("p", {
-      cls: "mod-warning",
-      text:
-        "You can decline and still use the plugin - it will learn from your vault alone, but " +
-        "prediction and autocorrect will be much weaker. You can download later from settings.",
+        "You can skip this and start right away - the plugin still works and learns from your " +
+        "own notes, and you can download the model anytime from settings.",
     });
     new Setting(contentEl)
       .addButton((b) =>

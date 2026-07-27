@@ -221,6 +221,10 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     const query = m ? m[1] : "";
     const startCh = cursor.ch - query.length;
 
+    // A letter run glued to a number is an ordinal / unit suffix ("19th", "3rd", "5km"), not a
+    // word being typed - don't offer completions of it (we'd suggest "the" for the "th").
+    if (query.length > 0 && startCh > 0 && /\d/.test(line[startCh - 1])) return null;
+
     // Just accepted a suggestion and the caret has not moved: that word is DONE. Ask
     // for the next word instead of re-completing what was just inserted - otherwise
     // accepting "hello" immediately offers "helloween", and Tab would replace the very
@@ -437,7 +441,10 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     // with one. English puts no space before "," or "." - but the popup triggers
     // right after "word ", so replacing from the cursor would give "world ,".
     // Extend the replaced range back over that space and eat it.
-    let spaced = this.spaceBefore(ctx.editor, ctx.start, insert);
+    // spaceBefore adds the separator ONLY for a next-word / phrase-at-caret insertion (empty
+    // query range). An in-place completion replaces the typed word and must never gain a leading
+    // space - doing so unconditionally put a stray space after an opening "(" ("( theory").
+    let spaced = ctx.query === "" ? this.spaceBefore(ctx.editor, ctx.start, insert) : insert;
     let from = this.eatSpaceBefore(ctx.editor, ctx.start, spaced);
     from = this.eatDoubleSpace(ctx.editor, from, spaced);
     // A suggestion ending in punctuation ("polish it.", or a bare ",") should leave
@@ -471,6 +478,8 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     if (startsWithTightPunct(insert)) return insert;
     const line = editor.getLine(at.line);
     const prev = line[at.ch - 1];
+    // No separating space after an opening bracket / quote - "(" hugs the word it wraps.
+    if (prev && /[([{"'“‘]/.test(prev)) return insert;
     return prev && !/\s/.test(prev) ? " " + insert : insert;
   }
 

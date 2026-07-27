@@ -290,6 +290,11 @@ export class AutocorrectController {
     const tokenStartCh = uptoToken.length - token.length;
     const precedingText = uptoToken.slice(0, tokenStartCh);
 
+    // A letter run stuck to the end of a number is not a word: it's an ordinal or unit suffix
+    // ("19th", "3rd", "1/16th", "5km", "3pm"). The token regex only captures the letters, so
+    // without this we'd "correct" the "th" of "19th" into "the". Leave it exactly as typed.
+    if (tokenStartCh > 0 && /\d/.test(uptoToken[tokenStartCh - 1])) return;
+
     // Personal dictionary: the SPELLING is correct as written, so no spelling correction and no
     // proper-noun re-casing. But "pinned spelling" was never meant to mean "exempt from the
     // ordinary rules of written English": a dictionary word still starts a sentence with a

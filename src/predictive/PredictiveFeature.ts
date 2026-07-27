@@ -124,13 +124,31 @@ export class PredictiveFeature {
     }
   }
 
+  /** The caret's absolute offset if `file` is the note currently being edited, else null.
+   *  Used to tell "the user is still typing this #tag" from "this tag is finished". */
+  private caretOffsetIn(file: TFile): number | null {
+    const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.file?.path !== file.path) return null;
+    const editor = view.editor;
+    return editor.posToOffset(editor.getCursor());
+  }
+
   /** Make the note's frontmatter tags: mirror the inline #tags used in its body. Adds tags
    *  that newly appear inline and removes ones whose last inline use was deleted. Idempotent,
    *  so the write it triggers doesn't loop. */
   private async syncFrontmatterTags(file: TFile): Promise<void> {
     const cache = this.plugin.app.metadataCache.getFileCache(file);
+    // The caret offset, when this file is the one being actively edited. A tag whose end sits
+    // exactly at the caret is still being TYPED (#5): the metadata cache reports "#photo" as a
+    // valid tag while the user is on their way to "#photosynthesis", so writing frontmatter now
+    // would churn it on every keystroke. Defer such a tag until the caret moves off it (a space,
+    // a newline, a click) - by which point it is a finished tag.
+    const typingAt = this.caretOffsetIn(file);
     const inline = new Set<string>();
-    for (const t of cache?.tags ?? []) inline.add(t.tag.replace(/^#/, ""));
+    for (const t of cache?.tags ?? []) {
+      if (typingAt !== null && t.position?.end?.offset === typingAt) continue; // still being typed
+      inline.add(t.tag.replace(/^#/, ""));
+    }
     const current = frontmatterTags(cache?.frontmatter);
     const currentSet = new Set(current);
     const same = current.length === inline.size && current.every((t) => inline.has(t));
@@ -312,10 +330,18 @@ export class PredictiveFeature {
     if (!this.settings.undoAddsToDictionary) return;
     const w = word.trim();
     if (!w || /\s/.test(w) || this.settings.userDictionary.includes(w)) return; // ignore merge-reverts (contain a space)
-    try {
-      if (await this.engine.isKnownWord(w)) return; // already featured → nothing to add
-    } catch {
-      /* engine unavailable: fall through and add (best effort) */
+    // A word with any uppercase is a specific spelling/casing - a proper noun, an acronym, or a
+    // mixed-case term ("Nasdaq", "CMOs", "NixOS"). Its LOWERCASE may well be "known" to the model,
+    // but that is exactly the case the known-word skip got wrong: the model kept RE-CASING it
+    // ("Nasdaq" -> "NASDAQ") and the skip meant reverting never pinned it, so it never stopped.
+    // Pin these verbatim; only apply the redundant-known skip to plain lowercase words (#11/#14).
+    const hasCase = w !== w.toLowerCase();
+    if (!hasCase) {
+      try {
+        if (await this.engine.isKnownWord(w)) return; // already featured → nothing to add
+      } catch {
+        /* engine unavailable: fall through and add (best effort) */
+      }
     }
     this.settings.userDictionary = [...this.settings.userDictionary, w];
     this.onSettingsChanged();
@@ -457,6 +483,15 @@ export class PredictiveFeature {
     // The corpus now reflects these edits, so its document-frequency table is the current
     // answer to "does this dictionary word still exist anywhere?" - prune right away (#8).
     if (paths.length) this.reconcileDict();
+    // Keep the within-document cache in step with the note you're actually editing (#1). The
+    // cache is seeded on note-open and otherwise only GROWS (observe() on accepts), so without
+    // this it drifts: words you have since deleted, and churn from a long session, keep getting
+    // boosted as candidates until a reload/note-switch reseeds it - which is exactly the "odd
+    // recommendation after a while, fixed by reloading" bug. Reseeding from the active note's
+    // current text clear()s that accumulation. Piggybacks on this 3s-debounced handler, so it
+    // costs one re-tokenise of the active note, not one per keystroke.
+    const active = this.plugin.app.workspace.getActiveFile();
+    if (active && paths.includes(active.path)) this.seedActiveDocument();
   }
 
   async enable(): Promise<void> {

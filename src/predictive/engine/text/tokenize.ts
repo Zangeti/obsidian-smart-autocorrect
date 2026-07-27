@@ -93,6 +93,31 @@ export function sanitizeForModel(text: string): string {
   );
 }
 
+/**
+ * English clitics that are written attached with an apostrophe: the possessive/reduction
+ * fragments a phrase decoder can emit as separate tokens ("roosevelt" + "s", "didn" + "t").
+ * The trained corpus contained curly apostrophes that its tokeniser split, so these live in
+ * the model vocab as bare tokens - re-attaching them here is what turns a suggested
+ * "Roosevelt s" back into "Roosevelt's" and "didn t" into "didn't".
+ */
+const CLITICS = new Set(["s", "t", "d", "ll", "re", "ve", "m"]);
+
+/**
+ * Join phrase words into a display/insert surface, re-attaching English clitics with an
+ * apostrophe instead of a space ("we", "ll" -> "we'll"; "i", "m" -> "i'm"). A standalone
+ * "s"/"t"/... is essentially never a real word of its own in a prediction, so this only ever
+ * repairs the split-contraction artefact and never mangles legitimate phrases.
+ */
+export function joinPhraseSurface(words: string[]): string {
+  if (words.length === 0) return "";
+  let out = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    out += CLITICS.has(w.toLowerCase()) ? `'${w}` : ` ${w}`;
+  }
+  return out;
+}
+
 /** Split raw text into the CASE-PRESERVING word+punctuation tokens the LSTM wants. */
 export function tokenizeWordsCased(text: string): string[] {
   // Smart quotes -> straight, so "don’t" tokenises as the trained "don't" rather

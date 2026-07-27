@@ -124,6 +124,8 @@ function ghostQuery(
   const line = before.slice(before.lastIndexOf("\n") + 1);
   const wm = line.match(/([A-Za-z][A-Za-z'-]*)$/);
   const query = wm ? wm[1] : "";
+  // A letter run glued to a number is an ordinal / unit suffix ("19th", "5km"), not a word.
+  if (query.length > 0 && /\d/.test(line[line.length - query.length - 1] ?? "")) return null;
   if (query.length === 0 && !/\w\s$/.test(line)) return null;
   if (query.length > 0 && query.length < settings.minChars) return null;
   return { ctx: contextWords(before, settings.extraAbbreviations), query, pos, before };

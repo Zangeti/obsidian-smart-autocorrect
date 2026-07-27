@@ -72,6 +72,45 @@ export class WordOracle {
   }
 
   /**
+   * Up to `limit` real words that begin with `prefix`, shortest first (a shorter completion is
+   * closer to what was typed and the likelier intent). The blob is pre-sorted, so prefix matches
+   * are contiguous: binary-search to the first line >= prefix, then scan forward while the prefix
+   * still matches. Used ONLY to top up a sparse suggestion menu with real words the 120k LM vocab
+   * lacks - never for correction or ranking.
+   */
+  completions(prefix: string, limit: number): string[] {
+    const blob = this.blob;
+    const p = prefix.toLowerCase();
+    if (!blob || !p || limit <= 0) return [];
+    // Binary search for the first line-start whose word is >= p.
+    let lo = 0;
+    let hi = blob.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      let s = mid;
+      while (s > 0 && blob[s - 1] !== 10) s--;
+      let e = s;
+      while (e < blob.length && blob[e] !== 10) e++;
+      const w = this.dec.decode(blob.subarray(s, e));
+      if (w < p) lo = e + 1;
+      else hi = s;
+    }
+    // Scan forward from the found line-start, collecting words that start with `p`.
+    const out: string[] = [];
+    let s = lo;
+    while (s < blob.length && out.length < limit * 4) {
+      let e = s;
+      while (e < blob.length && blob[e] !== 10) e++;
+      const w = this.dec.decode(blob.subarray(s, e));
+      if (!w.startsWith(p)) break; // sorted: once the prefix stops matching we're done
+      if (w !== p) out.push(w); // the exact word itself saves no keystrokes
+      s = e + 1;
+    }
+    out.sort((a, b) => a.length - b.length || (a < b ? -1 : 1));
+    return out.slice(0, limit);
+  }
+
+  /**
    * Recognise a real word by stripping a single common inflectional suffix and
    * checking whether the stem is a known word (per the supplied `known` predicate,
    * normally `model.hasWord` OR `this.has`). Catches forms the wordlist might miss,

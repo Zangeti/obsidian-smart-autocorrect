@@ -215,8 +215,12 @@ export function decideCorrection(
     : model.hasWord(typed) || (cfg.oracleReal?.(typed) ?? false);
 
   // An all-caps token is an acronym/initialism (SEC, NASA, USA, HTTP) or shouting,
-  // not a misspelling of a lowercase word - never "correct" it (SEC → SEE).
-  if (typedToken.length >= 2 && typedToken === typedToken.toUpperCase() && /[A-Z]/.test(typedToken))
+  // not a misspelling of a lowercase word - never "correct" it (SEC → SEE). A single
+  // trailing lowercase "s" is the plural of an acronym ("CMOs", "PhDs", "URLs"): the
+  // CORE is still all-caps, so it must be protected the same way (otherwise "CMOs"
+  // gets "corrected" to a lowercase near-neighbour).
+  const acronymCore = /s$/.test(typedToken) ? typedToken.slice(0, -1) : typedToken;
+  if (acronymCore.length >= 2 && acronymCore === acronymCore.toUpperCase() && /[A-Z]/.test(acronymCore))
     return no("acronym");
 
   // 0. contraction failsafe (deterministic): "dont" -> "don't".

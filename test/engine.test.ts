@@ -5,6 +5,7 @@ import {
   splitSentences,
   tokenizeWords,
   isSentenceTerminator,
+  joinPhraseSurface,
 } from "../src/predictive/engine/text/tokenize.ts";
 import { buildAbbreviationSet } from "../src/predictive/engine/text/abbreviations.ts";
 import {
@@ -149,6 +150,15 @@ test("autocorrect: never corrects all-caps acronyms (SEC stays SEC)", () => {
   assert.equal(fix.correct, true);
 });
 
+test("autocorrect: never corrects a plural acronym (CMOs / URLs stay put)", () => {
+  const eng = Engine.fromText(CORPUS + "\nThe CMOs and URLs met.");
+  for (const acr of ["CMOs", "URLs", "IDs", "NASAs"]) {
+    const d = decideCorrection(eng.model, eng.index, acr, ["the"]);
+    assert.equal(d.correct, false, `${acr} must not be corrected`);
+    assert.equal(d.reason, "acronym");
+  }
+});
+
 test("informationGain: ΔI is the log-posterior gap and is 0 when typed is the mode", () => {
   // Surprisal difference: −log P(typed) − (−log P(best)) = logPost(best) − logPost(typed).
   const cands = [
@@ -227,6 +237,21 @@ test("WordOracle: exact membership + morphological stem, from a packed blob", ()
   assert.equal(oracle.stemKnown("qwerty", known), false);
 });
 
+test("WordOracle.completions: prefix matches, shortest first, excluding the exact word", () => {
+  const words = ["car", "care", "career", "careful", "carry", "cat", "dog"].sort();
+  const blob = Buffer.from(words.join("\n"), "utf8");
+  const head = Buffer.alloc(12);
+  head.writeUInt32LE(0x57444c31, 0);
+  head.writeUInt32LE(words.length, 4);
+  head.writeUInt32LE(blob.length, 8);
+  const bytes = Buffer.concat([head, blob]);
+  const oracle = WordOracle.fromBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const got = oracle.completions("car", 3);
+  assert.deepEqual(got, ["care", "carry", "career"]); // shortest first; "car" itself excluded
+  assert.deepEqual(oracle.completions("xyz", 5), []); // no matches
+  assert.deepEqual(oracle.completions("", 5), []); // empty prefix asks for nothing
+});
+
 test("autocorrect: an oracle-real (rare) word is protected from correction", () => {
   const eng = Engine.fromText(CORPUS);
   const oracleReal = (w: string) => w === "debitor"; // pretend the oracle knows this rare word
@@ -235,6 +260,19 @@ test("autocorrect: an oracle-real (rare) word is protected from correction", () 
   const d = decideCorrection(eng.model, eng.index, "debitor", ["paid", "the"], { oracleReal });
   assert.equal(d.correct, false);
   assert.equal(d.reason, "real-word-rare");
+});
+
+test("joinPhraseSurface re-attaches split contraction/possessive clitics", () => {
+  assert.equal(joinPhraseSurface(["Roosevelt", "s"]), "Roosevelt's");
+  assert.equal(joinPhraseSurface(["didn", "t"]), "didn't");
+  assert.equal(joinPhraseSurface(["we", "ll"]), "we'll");
+  assert.equal(joinPhraseSurface(["i", "m"]), "i'm");
+  // Ordinary words still join with a space.
+  assert.equal(joinPhraseSurface(["new", "york"]), "new york");
+  assert.equal(joinPhraseSurface(["of", "the", "world"]), "of the world");
+  // Mixed: a clitic in the middle attaches, the rest space-join.
+  assert.equal(joinPhraseSurface(["it", "s", "a", "test"]), "it's a test");
+  assert.equal(joinPhraseSurface([]), "");
 });
 
 test("matchCase preserves original capitalisation shape", () => {
@@ -353,6 +391,28 @@ test("cache adapts by REWEIGHTING, so context can still veto a topical word", ()
   const gapRaw = base.logProb("market", ["the", "stock"]) - base.logProb("market", []);
   const gapAdapted = cache.logProb("market", ["the", "stock"]) - cache.logProb("market", []);
   assert.ok(Math.abs(gapRaw - gapAdapted) < 1e-9, "adaptation must not flatten context");
+});
+
+test("cache: setDocument RESEEDS (drops stale words) rather than accumulating", () => {
+  // The "odd suggestion after a while, gone after reload" bug (#1): the within-document cache
+  // only ever grew during a session, so a word you had DELETED kept being boosted as a
+  // candidate until a reload/note-switch reseeded it. setDocument must clear the old counts,
+  // so a reseed from text that no longer contains the word forgets it entirely.
+  const base = Engine.fromText(CORPUS).model;
+  const cache = new CacheLanguageModel(base, 0.15);
+  // "economy" recurs in this note, so the cache boosts it above its base probability.
+  cache.setDocument(tokenizeWords("the economy the economy the economy is strong"));
+  const boostedWhilePresent = cache.logProb("economy", ["the"]);
+  assert.ok(boostedWhilePresent > base.logProb("economy", ["the"]) + 1e-6, "recurring word is boosted");
+  // Reseed from a document that no longer mentions it (as happens when the paragraph is
+  // deleted, and now on every edit): the stale boost is gone - a FRESH cache, not the old
+  // counts plus the new ones. Before the fix this only happened on reload/note-switch, which
+  // is why the odd recommendation "cleared after reloading the plugin".
+  cache.setDocument(tokenizeWords("the market rose again and again and again"));
+  assert.ok(
+    Math.abs(cache.logProb("economy", ["the"]) - base.logProb("economy", ["the"])) < 1e-9,
+    "reseed drops the stale boost entirely",
+  );
 });
 
 // --- int8 LSTM gates (fmt 5) -------------------------------------------------------
