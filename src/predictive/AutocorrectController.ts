@@ -397,14 +397,21 @@ export class AutocorrectController {
     if (typedUpper) replacement = replacement.toUpperCase();
 
     if (this.settings.autoCapitalize && !typedUpper) {
-      // Proper-noun casing now comes from the cased LSTM, in context, rather than
-      // a static frequency map - so "paris" -> "Paris" while "i will polish it"
-      // is left alone. Sentence-initial capitalisation stays punctuation-driven.
+      // Proper-noun casing comes from the cased LSTM, in context - so "paris" -> "Paris" while
+      // "i will polish it" is left alone. But ONLY when you typed the word in plain lowercase:
+      // if you already capitalised it yourself ("Nasdaq"), that is a deliberate choice and we
+      // must respect it, not overrule it with the model's preferred form ("NASDAQ"). Overruling
+      // a capitalisation you chose is exactly the contradiction where the popup suggests
+      // "Nasdaq" yet space then "corrects" it to "NASDAQ". Sentence-initial capitalisation of a
+      // lowercase word stays punctuation-driven either way.
+      const typedLower = token === token.toLowerCase();
       let canonical: string | null = null;
-      try {
-        canonical = await this.engine.caseFor(replacement, context);
-      } catch {
-        /* no casing advice: fall through to sentence-case only */
+      if (typedLower) {
+        try {
+          canonical = await this.engine.caseFor(replacement, context);
+        } catch {
+          /* no casing advice: fall through to sentence-case only */
+        }
       }
       replacement = applyAutoCapitalization(replacement, precedingText, {
         ...this.caseCfg,

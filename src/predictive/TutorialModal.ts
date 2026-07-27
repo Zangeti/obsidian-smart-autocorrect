@@ -3,9 +3,9 @@
  *
  * Deliberately short. The plugin has a lot of surface, but only a few things a new user MUST
  * know or they will not understand what is happening to their text: Tab accepts, space
- * corrects, undo both restores and teaches, and links are offered rather than inserted. Every
- * other feature is discoverable from the settings tab and does not need explaining up front.
- * A longer tour is a tour people click through without reading, which teaches nothing.
+ * corrects, and undo puts a wrong correction back. Every other feature is discoverable from the
+ * settings tab and does not need explaining up front. A longer tour is a tour people click
+ * through without reading, which helps no one.
  *
  * It ends on the stats counter rather than another feature: finishing on what the plugin has
  * done FOR you is a better last impression than one more thing to learn, and it points at the
@@ -31,39 +31,32 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     title: "Press Tab to accept",
     body:
-      "As you type, a list of likely next words appears. Press Tab to take the highlighted one, " +
-      "or just keep typing to ignore it.",
+      "As you type, likely next words appear. Press Tab to take the highlighted one, or just " +
+      "keep typing to ignore it.",
     keys: ["Tab"],
     image: "suggest",
   },
   {
     title: "Typos fix themselves",
     body:
-      "Finish a word with a space or punctuation and an obvious misspelling is corrected, the " +
-      "way a phone keyboard does. Capital letters are handled for you too.",
+      "Finish a word with a space or punctuation and an obvious misspelling is fixed for you, " +
+      "the way a phone keyboard does. Capital letters are handled too.",
     keys: ["Space"],
     image: "autocorrect",
   },
   {
-    title: "Undo is how you teach it",
+    title: "Wrong correction? Just undo",
     body:
-      "Not the word you wanted? Undo puts your original straight back, and the plugin remembers " +
-      "not to make that correction again.",
+      "Changed a word you meant to keep? Press Ctrl/Cmd-Z. Your original comes straight back, " +
+      "and it won't change that word again.",
     keys: ["Ctrl", "Z"],
     image: "undo",
   },
   {
-    title: "Link notes as you write",
+    title: "See what you've saved",
     body:
-      "Experimental: text matching a note you already wrote is underlined. Hover to preview, " +
-      "click to link. Nothing is inserted on its own, and you can turn it off in settings.",
-    image: "links",
-  },
-  {
-    title: "See what you have saved",
-    body:
-      "The counter in the status bar tracks the keystrokes this has saved you. Click it any " +
-      "time for your streak, time saved, and what the plugin has learned.",
+      "The counter in the status bar adds up the keystrokes you've saved. Click it any time for " +
+      "your streak, time saved, and more.",
     image: "stats",
   },
 ];

@@ -133,6 +133,10 @@ export type PaneItem = PaneRow | PaneNote | PaneCustom;
 export interface PaneGroup {
   heading?: string;
   items: PaneItem[];
+  /** An "advanced" section: shown collapsed so the main pane isn't a wall of options. On 1.13+
+   *  it becomes a navigable sub-page; on older Obsidian a native <details> disclosure. Needs a
+   *  heading (it's the thing you click to open it). */
+  collapsed?: boolean;
 }
 
 /**
@@ -147,8 +151,8 @@ export class PaneBuilder {
     this.groups.push({ items: [] }); // anything before the first heading
   }
 
-  group(heading?: string): void {
-    this.groups.push({ heading, items: [] });
+  group(heading?: string, collapsed = false): void {
+    this.groups.push({ heading, items: [], collapsed });
   }
 
   private get current(): PaneGroup {
@@ -172,15 +176,26 @@ export class PaneBuilder {
 
 /** Pre-1.13 path: build the DOM into `containerEl`, as display() always did. */
 export function renderPaneGroups(containerEl: HTMLElement, groups: PaneGroup[]): void {
+  const renderItems = (into: HTMLElement, items: PaneItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "row") item.row.apply(new Setting(into), true);
+      else if (item.kind === "note")
+        into.createEl("p", { text: item.text, cls: "setting-item-description" });
+      else item.build(into);
+    }
+  };
   for (const g of groups) {
     if (g.items.length === 0) continue;
-    if (g.heading) new Setting(containerEl).setName(g.heading).setHeading();
-    for (const item of g.items) {
-      if (item.kind === "row") item.row.apply(new Setting(containerEl), true);
-      else if (item.kind === "note")
-        containerEl.createEl("p", { text: item.text, cls: "setting-item-description" });
-      else item.build(containerEl);
+    // An advanced section: a native <details> disclosure, closed by default, so the main pane
+    // stays short. (On 1.13+ these become navigable sub-pages instead - see toSettingDefinitions.)
+    if (g.collapsed && g.heading) {
+      const details = containerEl.createEl("details", { cls: "smart-autocorrect-collapsible" });
+      details.createEl("summary", { text: g.heading });
+      renderItems(details, g.items);
+      continue;
     }
+    if (g.heading) new Setting(containerEl).setName(g.heading).setHeading();
+    renderItems(containerEl, g.items);
   }
 }
 
@@ -191,32 +206,37 @@ export function renderPaneGroups(containerEl: HTMLElement, groups: PaneGroup[]):
  * searchable.
  */
 export function toSettingDefinitions(groups: PaneGroup[]): SettingDefinitionItem[] {
+  const itemToDef = (item: PaneItem) => {
+    if (item.kind === "row") {
+      return {
+        name: item.row.name,
+        desc: item.row.desc || undefined,
+        aliases: item.aliases,
+        render: (s: Setting) => item.row.apply(s, false),
+      };
+    }
+    if (item.kind === "note") {
+      // A description with no name: the same explanatory paragraph, in a row of its own.
+      // Excluded from search because a paragraph is not something you can go and change.
+      return { name: "", desc: item.text, searchable: false, render: () => {} };
+    }
+    return {
+      name: item.name,
+      render: (s: Setting) => {
+        s.settingEl.addClass("smart-autocorrect-custom-row");
+        item.build(s.settingEl);
+      },
+    };
+  };
   return groups
     .filter((g) => g.items.length > 0)
-    .map((g) => ({
-      type: "group" as const,
-      heading: g.heading,
-      items: g.items.map((item) => {
-        if (item.kind === "row") {
-          return {
-            name: item.row.name,
-            desc: item.row.desc || undefined,
-            aliases: item.aliases,
-            render: (s: Setting) => item.row.apply(s, false),
-          };
-        }
-        if (item.kind === "note") {
-          // A description with no name: the same explanatory paragraph, in a row of its own.
-          // Excluded from search because a paragraph is not something you can go and change.
-          return { name: "", desc: item.text, searchable: false, render: () => {} };
-        }
-        return {
-          name: item.name,
-          render: (s: Setting) => {
-            s.settingEl.addClass("smart-autocorrect-custom-row");
-            item.build(s.settingEl);
-          },
-        };
-      }),
-    }));
+    .map((g) => {
+      const items = g.items.map(itemToDef);
+      // An advanced section becomes a navigable sub-page (a single clickable entry that opens
+      // its own screen), so the top-level pane stays short instead of a long scroll.
+      if (g.collapsed && g.heading) {
+        return { type: "page" as const, name: g.heading, items };
+      }
+      return { type: "group" as const, heading: g.heading, items };
+    });
 }

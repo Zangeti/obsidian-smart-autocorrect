@@ -428,3 +428,32 @@ body {
   border-top: none;
   padding-bottom: 0;
 }
+
+/* Collapsible "advanced" settings sections (pre-1.13 render path; on 1.13+ these
+   become native navigable sub-pages instead). Styled to read like a section heading. */
+.smart-autocorrect-collapsible {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+}
+.smart-autocorrect-collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 0 4px;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.smart-autocorrect-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+.smart-autocorrect-collapsible > summary::before {
+  content: "\203A"; /* › */
+  display: inline-block;
+  width: 1em;
+  transition: transform 120ms ease;
+}
+.smart-autocorrect-collapsible[open] > summary::before {
+  transform: rotate(90deg);
+}

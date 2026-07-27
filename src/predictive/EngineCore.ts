@@ -274,15 +274,19 @@ export class EngineCore {
   }
 
   /**
-   * Is `word` already "known" to the predictor - i.e. in the 120k LM vocab OR the user's
-   * personal additions? This is the scope for "don't re-add a word that already exists":
-   * such a word is already featured (predictable / suggestable), so adding it is redundant.
-   * NOTE: deliberately does NOT consult the big oracle - an oracle-only word (e.g. "debitor")
-   * is a real word we won't CORRECT, but it is not yet featured, so the user is still allowed
-   * to add it to their personal dictionary to make it suggestable.
+   * Is `word` already part of the "dictionary of recommendations" - anything that can already
+   * suggest or recognise it, so adding it to the personal dictionary would be redundant?
+   *
+   * That is: the 120k LM vocab, the user's own vault/personal additions (midModel), OR the
+   * bundled word list. The word list is included DELIBERATELY now that a sparse suggestion menu
+   * is topped up from it (see getSuggestions): a word the list knows is already recommendable,
+   * so offering to "add" it would be adding a word that is already there. This is what backs the
+   * rule "you can only add a word that isn't already suggested". (It stays separate from
+   * isRealWord, which decides the CORRECTION regime, not what may be added.)
    */
   isKnownWord(word: string): boolean {
-    return this.midModel?.hasWord(word.toLowerCase()) ?? false;
+    const w = word.toLowerCase();
+    return (this.midModel?.hasWord(w) ?? false) || this.wordOracle.has(w);
   }
 
   /**

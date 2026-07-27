@@ -314,7 +314,7 @@ export function buildPredictiveSettingGroups(
 
   b.group("Smart predictions & autocorrect");
   b.note(
-    "Context-aware next-word prediction, phone-style autocorrect, and multi-word phrases. Accept with Tab. Learns from your vault as you write.",
+    "Predicts your next word, fixes typos as you type, and completes whole phrases. Press Tab to accept. Everything runs on your device.",
   );
 
   // --- master switch + resets, right at the top ---------------------------
@@ -332,7 +332,7 @@ export function buildPredictiveSettingGroups(
   if (personalization) {
     row()
       .setName("Getting started")
-      .setDesc("A short tour of the things worth knowing: accepting a suggestion, how typos are fixed, how undo teaches it, and where your stats live.")
+      .setDesc("A quick tour: accepting a suggestion, how typos get fixed, undoing a correction you didn't want, and where to find your stats.")
       .addButton((btn) => btn.setButtonText("Show me").onClick(() => personalization.onOpenTutorial()));
     row()
       .setName("Reset settings")
@@ -353,7 +353,7 @@ export function buildPredictiveSettingGroups(
 
   row()
     .setName("Predictive text (suggest the next word)")
-    .setDesc("Shows likely next words from the recent context. The neural model reads up to about 24 words back; the word-frequency model uses the last one or two. Turn off to disable all suggestions.")
+    .setDesc("Suggests likely next words from what you've written so far. Turn off to hide all suggestions.")
     .addToggle((t) =>
       t.setValue(settings.enablePredictions).onChange((v) => {
         settings.enablePredictions = v;
@@ -363,7 +363,7 @@ export function buildPredictiveSettingGroups(
 
   row()
     .setName("Autocorrect typos when you press space")
-    .setDesc("Automatically fixes a misspelt word on space/punctuation (mobile-keyboard style). Undo with Ctrl/Cmd-Z; that also teaches it to leave that word alone.")
+    .setDesc("Fixes an obvious misspelling when you finish a word with a space or punctuation, like a phone keyboard. Wrong correction? Just undo (Ctrl/Cmd-Z) — your word comes back and it won't be changed again.")
     .addToggle((t) =>
       t.setValue(settings.autocorrectOnSpace).onChange((v) => {
         settings.autocorrectOnSpace = v;
@@ -401,8 +401,8 @@ export function buildPredictiveSettingGroups(
     );
 
   row()
-    .setName("Auto-capitalise sentences & proper nouns")
-    .setDesc('Capitalises real sentence starts (safe with "U.S.", "e.g.", decimals), fixes "THe"→"The", and learns proper-noun casing ("london"→"London").')
+    .setName("Auto-capitalise sentences & names")
+    .setDesc('Capitalises the start of a sentence (and leaves "U.S.", "e.g." and decimals alone), fixes "THe" → "The", and capitalises names like "london" → "London".')
     .addToggle((t) =>
       t.setValue(settings.autoCapitalize).onChange((v) => {
         settings.autoCapitalize = v;
@@ -411,8 +411,8 @@ export function buildPredictiveSettingGroups(
     );
 
   row()
-    .setName("Learn my writing style from this vault")
-    .setDesc("Biases predictions toward the words and phrasing you actually use in your notes.")
+    .setName("Prefer words from my own notes")
+    .setDesc("Leans suggestions toward the words and phrasing you already use.")
     .addToggle((t) =>
       t.setValue(settings.personalBias).onChange((v) => {
         settings.personalBias = v;
@@ -563,7 +563,7 @@ export function buildPredictiveSettingGroups(
     );
 
   // --- matching quality ---------------------------------------------------
-  b.group("Accuracy boosters");
+  b.group("Accuracy boosters", true);
   b.note("Each makes corrections smarter for a different kind of mistake. All recommended on.");
   row()
     .setName("Keyboard-typo strength")
@@ -594,11 +594,11 @@ export function buildPredictiveSettingGroups(
   toggle("Fix the wrong real word", 'Catches valid words used incorrectly in context ("form" → "from", "their" → "there").', "realWordCorrection");
   toggle("Fix missing spaces", 'Splits run-together words ("alot" → "a lot", "thebank" → "the bank").', "splitCorrection");
   toggle("Smarter context ranking", "Ranks words by how many contexts they appear in, not just raw frequency. Reins in over-eager rare words.", "useContinuation");
-  toggle("Learn my keyboard slips", "Adapts the typo model to the specific key mistakes you personally make over time.", "adaptiveKeyboard");
-  toggle("Learn from my choices", "Reorders suggestions based on which ones you actually pick.", "learnedRanking");
+  toggle("Adapt to my typing", "Learns the particular key mistakes you tend to make, and corrects them better over time.", "adaptiveKeyboard");
+  toggle("Rank by what I pick", "Reorders suggestions based on which ones you actually choose.", "learnedRanking");
   row()
-    .setName("Remember words used in this note")
-    .setDesc("Boosts words you've already used in the current note (topic awareness). 0 disables.")
+    .setName("Favour words from this note")
+    .setDesc("Gives a small boost to words you've already used in the note you're writing, so suggestions stay on topic. 0 turns it off.")
     .addSlider((s) =>
       s
         .setLimits(0, 0.5, 0.05)
@@ -684,7 +684,7 @@ export function buildPredictiveSettingGroups(
     );
 
   // --- markdown / performance --------------------------------------------
-  b.group("Links & tags");
+  b.group("Links & tags", true);
   // One dropdown drives the two linking features so you can pick exactly what you want:
   //  - "tooltips": the ambient link icons beside a block (suggestLinks)
   //  - "menu": our [[ picker replacing Obsidian's (replaceLinkMenu)
@@ -776,7 +776,7 @@ export function buildPredictiveSettingGroups(
       "once, run \"Suggest links in this note\" or \"Suggest tags for this note\" (Ctrl/Cmd-P).",
   );
 
-  b.group("Where it works & performance");
+  b.group("Where it works & performance", true);
   toggle(
     "Don't touch code, math, links & tags",
     "Never predict or autocorrect inside code blocks, LaTeX math, [[wikilinks]], URLs, #tags, or frontmatter, so it can't corrupt them.",
@@ -888,7 +888,7 @@ export function buildPredictiveSettingGroups(
     );
   row()
     .setName("Keyboard layout")
-    .setDesc("Used by the typo model's key-distance prior.")
+    .setDesc("Which keys count as near each other, so typo correction knows which slips are likely.")
     .addDropdown((d) =>
       d
         .addOptions({ qwerty: "QWERTY", qwertz: "QWERTZ", azerty: "AZERTY", dvorak: "Dvorak" })
@@ -901,7 +901,7 @@ export function buildPredictiveSettingGroups(
 
   // --- personalization management ----------------------------------------
   if (!personalization) return b.groups;
-  b.group("Personalization");
+  b.group("Personalization", true);
   const stats = personalization.getStats();
   // Headline gamification stat: characters saved, streak, and estimated time saved.
   b.custom("Keystrokes saved", (el) => {
@@ -944,11 +944,11 @@ export function buildPredictiveSettingGroups(
   );
 
   row()
-    .setName("Personalise to me")
+    .setName("Adapt to me")
     .setDesc(
-      "Learn from your corrections and accepts, and use what was learned. Turn off to " +
-        "keep suggestions identical for everyone: nothing new is recorded and existing " +
-        "learning is ignored (but kept, so you can turn this back on).",
+      "Adapt to your corrections and the suggestions you accept. Turn off to keep suggestions " +
+        "the same for everyone: nothing new is recorded and what's already been learned is set " +
+        "aside (but kept, so you can switch it back on).",
     )
     .addToggle((t) =>
       t.setValue(settings.personalizationEnabled).onChange((v) => {

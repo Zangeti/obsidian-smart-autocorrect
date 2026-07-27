@@ -330,18 +330,15 @@ export class PredictiveFeature {
     if (!this.settings.undoAddsToDictionary) return;
     const w = word.trim();
     if (!w || /\s/.test(w) || this.settings.userDictionary.includes(w)) return; // ignore merge-reverts (contain a space)
-    // A word with any uppercase is a specific spelling/casing - a proper noun, an acronym, or a
-    // mixed-case term ("Nasdaq", "CMOs", "NixOS"). Its LOWERCASE may well be "known" to the model,
-    // but that is exactly the case the known-word skip got wrong: the model kept RE-CASING it
-    // ("Nasdaq" -> "NASDAQ") and the skip meant reverting never pinned it, so it never stopped.
-    // Pin these verbatim; only apply the redundant-known skip to plain lowercase words (#11/#14).
-    const hasCase = w !== w.toLowerCase();
-    if (!hasCase) {
-      try {
-        if (await this.engine.isKnownWord(w)) return; // already featured → nothing to add
-      } catch {
-        /* engine unavailable: fall through and add (best effort) */
-      }
+    // Only a word the engine does NOT already know is worth adding: if it is already suggested
+    // and recognised, adding it to your personal dictionary is redundant and confusing (you'd be
+    // "adding" a word that was already there). A word that IS known should not have been
+    // corrected against your wishes in the first place - that is fixed at the source (a casing
+    // you typed yourself is now respected), so there is nothing to pin here. (#11/#14)
+    try {
+      if (await this.engine.isKnownWord(w)) return; // already featured → nothing to add
+    } catch {
+      /* engine unavailable: fall through and add (best effort) */
     }
     this.settings.userDictionary = [...this.settings.userDictionary, w];
     this.onSettingsChanged();
@@ -718,9 +715,11 @@ export class PredictiveFeature {
     this.plugin.registerEvent(
       this.plugin.app.vault.on("delete", (f) => {
         if (isMd(f)) {
-          void this.engine.onFileDeleted(f.path);
+          // Reconcile AFTER the corpus has actually dropped the file, not in parallel with it:
+          // firing the prune before removeFile lands read a stale document-frequency table, so a
+          // word whose last use was in the deleted note was not always removed (#8).
+          void this.engine.onFileDeleted(f.path).then(() => this.reconcileDict());
           this.refreshRelated();
-          this.reconcileDict(); // a delete may have removed the last use of a dictionary word (#8)
         }
       }),
     );
@@ -733,7 +732,13 @@ export class PredictiveFeature {
       }),
     );
     this.plugin.registerEvent(
-      this.plugin.app.workspace.on("active-leaf-change", () => this.seedActiveDocument()),
+      this.plugin.app.workspace.on("active-leaf-change", () => {
+        this.seedActiveDocument();
+        // Leaving a note is a natural point to tidy the dictionary: any words you deleted from
+        // it are, by now, committed to the corpus, so a word that has left the vault entirely
+        // gets pruned promptly instead of waiting for the next edit somewhere (#8).
+        this.reconcileDict();
+      }),
     );
 
     this.registerCommands();

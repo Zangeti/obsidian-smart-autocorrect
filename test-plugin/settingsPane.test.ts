@@ -117,12 +117,16 @@ test("the declarative definitions carry the same rows as the pane groups", async
   const defs = pane.toSettingDefinitions(groups);
 
   const groupNames = groups.flatMap((g) => g.items.filter((i) => i.kind === "row").map((i) => i.row!.name));
+  // Rows live in top-level groups AND inside "advanced" sections, which are emitted as
+  // navigable sub-pages (type: "page") rather than inline groups. Both carry `items`.
   const defNames = defs.flatMap((d) => d.items.map((i) => i.name)).filter((n) => n !== "");
   for (const n of groupNames) assert.ok(defNames.includes(n), `"${n}" is missing from the definitions`);
   assert.ok(
-    defs.every((d) => d.type === "group"),
-    "every top-level definition should be a group",
+    defs.every((d) => d.type === "group" || d.type === "page"),
+    "every top-level definition should be a group or a collapsible page",
   );
+  // At least one advanced section must have collapsed into a page (that's the decluttering).
+  assert.ok(defs.some((d) => d.type === "page"), "expected some sections to collapse into pages");
 });
 
 test("a row's control still reads and writes the settings object", async () => {
