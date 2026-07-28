@@ -120,6 +120,17 @@ function inflectionClass(w: string): "ing" | "ed" | "s" | "" {
   return "";
 }
 
+/** Is `w` a negation of `base` ("happy"→"unhappy", "clear"→"unclear", "like"→"dislike")? The tied
+ *  embedding places antonyms very close to their root, so a negated form is a frequent false
+ *  "alternative"; this catches the productive morphological ones cheaply. */
+function isNegationOf(base: string, w: string): boolean {
+  for (const p of ["un", "in", "im", "dis", "non", "ir", "il"]) {
+    if (w === p + base) return true;
+    if (base === p + w) return true; // the query itself is the negated form
+  }
+  return false;
+}
+
 /** Are `a` and `b` the same root word ("use"/"uses"/"usage", "help"/"helpful")? Such forms are
  *  not ALTERNATIVES to each other, so they're dropped from the suggestions. */
 function sameLemma(a: string, b: string): boolean {
@@ -572,26 +583,43 @@ export class LstmLanguageModel implements LanguageModel {
     };
     const qProj = proj(id);
     const cls = inflectionClass(lower);
-    const cand: { w: string; id: number; cos: number; p: number }[] = [];
+    // The vocab is frequency-sorted (id 0 = <unk>, low ids = common words), so a word's id is a
+    // rank: a higher id than the query means a RARER, usually more sophisticated word. That is a
+    // far cleaner "more eloquent" signal than the embedding direction alone, and - because
+    // antonyms of a common word tend to be common too (good/bad, big/small) - gently ranking rarer
+    // words up also pushes the antonym trap down. We BLEND three signals rather than hard-filter on
+    // any one: semantic closeness (cosine), sophistication (rarity), and the formal↔casual axis.
+    const cand: { w: string; score: number; cos: number }[] = [];
     for (let i = 1; i < V; i++) { // skip <unk> at 0
       if (i === id) continue;
+      // Skip the rarest tail of the (frequency-sorted) vocab: it is mostly proper-noun fragments,
+      // foreign words and OCR junk ("pygmygoby", "tsibbur"), which the rarity bonus would otherwise
+      // float to the top when a word has few good neighbours.
+      if (i > V * 0.66) continue;
       const w = this.vocab[i];
       if (!/^[a-z]+$/.test(w)) continue; // plain lowercase words only
+      if (w.length < 3) continue; // "u", "ok"… aren't alternatives
       const b = i * dim, s = sw[i];
       let d = 0;
       for (let a = 0; a < dim; a++) d += qv[a] * q[b + a];
       const cos = (d * s) / norms[i];
-      if (cos < 0.35) continue; // not similar enough to be an alternative
+      // Genuine synonyms sit at high cosine (gargantuan~big, conundrum~problem all clear 0.4); the
+      // rare junk that the sophistication bonus tries to float up only ever reaches ~0.30-0.35, so
+      // a firm floor here is what separates "eloquent" from "obscure noise".
+      if (cos < 0.36) continue;
       if (inflectionClass(w) !== cls) continue; // keep number/tense consistent
       if (sameLemma(lower, w)) continue; // not an inflection/derivation of the same word
-      cand.push({ w, id: i, cos, p: proj(i) });
+      if (isNegationOf(lower, w)) continue; // an antonym, not an alternative
+      // Rarity: log-ratio of ranks, positive when the candidate is rarer than the query. Capped so
+      // a genuinely obscure word can't dominate a close, usefully-rare synonym.
+      const rarer = Math.min(1.5, Math.max(0, Math.log((i + 60) / (id + 60))));
+      // Formality: only the part of the axis where the candidate sits ABOVE the query counts.
+      const formal = Math.max(0, proj(i) - qProj);
+      const score = cos + 0.18 * rarer + 0.22 * formal;
+      cand.push({ w, score, cos });
     }
-    // Prefer neighbours MORE eloquent than the word, ranked by the direction; if none are, fall
-    // back to the plain nearest neighbours so the action always offers something useful.
-    const moreFormal = cand.filter((c) => c.p > qProj);
-    const pool = moreFormal.length ? moreFormal : cand;
-    pool.sort((a, b) => (dir ? b.p - a.p : 0) || b.cos - a.cos);
-    return pool.slice(0, k).map((c) => c.w);
+    cand.sort((a, b) => b.score - a.score || b.cos - a.cos);
+    return cand.slice(0, k).map((c) => c.w);
   }
 
   /**

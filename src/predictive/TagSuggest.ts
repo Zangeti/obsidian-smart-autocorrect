@@ -59,6 +59,28 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     this.engine = engine;
     this.getSettings = getSettings;
     this.onAccept = onAccept;
+    this.bindAcceptKey();
+  }
+
+  /**
+   * Accept a tag with the SAME key as the word popup (Tab by default), not just Enter. Obsidian's
+   * EditorSuggest binds only Enter out of the box, so `#pho`<Tab> fell through to the editor as an
+   * indent instead of accepting the highlighted `#photosynthesis`. We register the configured
+   * accept key (and Shift+key, so it still fires while typing in caps) to drive the current
+   * selection, mirroring PredictiveSuggest.
+   */
+  private bindAcceptKey(): void {
+    const accept = (evt: KeyboardEvent) => {
+      const self = this as unknown as { suggestions?: { useSelectedItem: (e: Event) => void } };
+      if (self.suggestions) {
+        self.suggestions.useSelectedItem(evt);
+        return false; // consume: don't also indent/outdent
+      }
+      return true;
+    };
+    const key = this.getSettings().acceptKey;
+    this.scope.register([], key, accept);
+    this.scope.register(["Shift"], key, accept);
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
@@ -131,6 +153,9 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     ctx.editor.replaceRange(`#${item.tag} `, ctx.start, ctx.end);
     const ch = ctx.start.ch + item.tag.length + 2;
     ctx.editor.setCursor({ line: ctx.start.line, ch });
+    // Dismiss the popup once a tag is chosen. The trailing space already stops onTrigger from
+    // re-matching, but closing explicitly guarantees the menu doesn't linger over the new caret.
+    this.close();
     // Characters the user didn't have to type = the tag letters beyond what was typed.
     const saved = Math.max(0, item.tag.length - ctx.query.length);
     if (saved > 0) this.onAccept(`#${item.tag}`, saved);

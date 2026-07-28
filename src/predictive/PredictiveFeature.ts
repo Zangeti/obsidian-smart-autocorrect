@@ -5,7 +5,7 @@
  */
 import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile, type SettingDefinitionItem } from "obsidian";
 import type { Editor, EditorPosition, MarkdownFileInfo } from "obsidian";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { pathExcluded, termFreq, matchCase } from "./engine/index";
 import { PredictiveEngineController } from "./PredictiveEngineController";
 import { LinkIndex } from "./LinkIndex";
@@ -17,6 +17,7 @@ import { LinkPicker } from "./LinkPicker";
 import { openLinkSelection } from "./LinkSelectionModal";
 import { ensureAssets, missingAssets } from "./ModelAssets";
 import { LinkChooser } from "./LinkChooser";
+import { AlternativesPopup } from "./AlternativesPopup";
 import { PersonalizationStore } from "./PersonalizationStore";
 import { PredictiveSuggest } from "./PredictiveSuggest";
 import { AutocorrectController } from "./AutocorrectController";
@@ -46,6 +47,7 @@ export class PredictiveFeature {
   engine: PredictiveEngineController;
   private suggest: PredictiveSuggest | null = null;
   private autocorrect: AutocorrectController | null = null;
+  private readonly altPopup = new AlternativesPopup();
   private enabled = false;
   private dirty = new Set<string>();
   private flushDirty: () => void;
@@ -64,6 +66,8 @@ export class PredictiveFeature {
   private tagDirty = new Set<string>();
   private flushTagSync: () => void;
   private reconcileDict: () => void;
+  /** Debounced reseed of the within-document cache from the live editor (drift guard, see ctor). */
+  private reseedCache: () => void;
 
   /** Gamification: keystrokes-saved total, daily streak, milestones. */
   engagement: EngagementStore;
@@ -111,6 +115,14 @@ export class PredictiveFeature {
     // once the corpus has absorbed the edit. The only wait left is the corpus's own flush, which
     // is there because re-counting a file costs real work - not because pruning does.
     this.reconcileDict = debounce(() => void this.reconcileDictionary(), 0, false);
+    // Reseed the within-document cache straight from the editor a beat after you stop typing. The
+    // cache is the only session state that is NOT persisted, so it is the one thing a plugin reload
+    // resets while the text stays the same - which is exactly the profile of the "odd suggestion
+    // after a while, gone after reloading" drift. It grows via observe() on every accept, so an odd
+    // word carried in an accepted phrase can linger and, because a rare word's boost is large, take
+    // over the menu. Tying the reseed to the live buffer (not to Obsidian's save-driven modify
+    // event) means the cache can never drift more than ~1s from what is actually on screen.
+    this.reseedCache = debounce(() => this.seedActiveDocument(), 1000, false);
   }
 
   /** Reconcile each dirty file's frontmatter tags: with the #tags in its body. */
@@ -446,26 +458,48 @@ export class PredictiveFeature {
    * dictionary entry, so no answer must never be read as "gone".
    */
   private async reconcileDictionary(): Promise<void> {
-    if (!this.settings.pruneDictionaryFromVault || this.settings.userDictionary.length === 0) return;
+    if (this.settings.userDictionary.length === 0 || !this.engine.ready) return;
     const dict = this.settings.userDictionary;
-    let freq: number[] | null;
+
+    // (a) Drop entries the engine already recognises. A personal-dictionary word should only ever
+    // be one nothing else knows; anything the vocab / word list recognises was added by an older
+    // build (before the add-guard was case-folded) and is now showing a misleading "yours" badge
+    // (e.g. "Nasdaq"). This runs regardless of the vault-prune setting - it's an invariant repair,
+    // not a vault sync.
+    let known: boolean[] | null = null;
     try {
-      freq = await this.engine.documentFrequencies(dict);
+      known = await this.engine.knownWords(dict);
     } catch {
-      return;
+      /* engine busy: skip this pass, try again on the next edit */
     }
-    if (!freq || freq.length !== dict.length) return;
-    const keep = dict.filter((_, i) => freq[i] > 0);
-    const removed = dict.filter((_, i) => freq[i] === 0);
-    if (removed.length === 0) return;
+
+    // (b) Drop entries whose word no longer appears in ANY vault note (#8), only when the user has
+    // asked for that. Uses document frequency from the corpus, which reflects the live buffer of
+    // the note being edited (see processDirty).
+    let freq: number[] | null = null;
+    if (this.settings.pruneDictionaryFromVault) {
+      try {
+        freq = await this.engine.documentFrequencies(dict);
+      } catch {
+        /* corpus not ready */
+      }
+    }
+
+    const recognised = (i: number) => known !== null && known.length === dict.length && known[i];
+    const goneFromVault = (i: number) => freq !== null && freq.length === dict.length && freq[i] === 0;
+    const keep = dict.filter((_, i) => !recognised(i) && !goneFromVault(i));
+    if (keep.length === dict.length) return;
+    const removedKnown = dict.filter((_, i) => recognised(i));
+    const removedVault = dict.filter((_, i) => !recognised(i) && goneFromVault(i));
     this.settings.userDictionary = keep;
     this.onSettingsChanged();
     this.onPersistSettings?.();
-    new Notice(
-      removed.length === 1
-        ? `Removed “${removed[0]}” from your personal dictionary (no longer in the vault)`
-        : `Removed ${removed.length} words from your personal dictionary (no longer in the vault)`,
-    );
+    const parts: string[] = [];
+    if (removedKnown.length)
+      parts.push(`${removedKnown.map((w) => `“${w}”`).join(", ")} (already recognised)`);
+    if (removedVault.length)
+      parts.push(`${removedVault.map((w) => `“${w}”`).join(", ")} (no longer in the vault)`);
+    new Notice(`Tidied your personal dictionary: removed ${parts.join("; ")}`);
   }
 
   /** Remove a word from the personal dictionary, with a confirming notice (#13). */
@@ -501,9 +535,15 @@ export class PredictiveFeature {
   private async processDirty(): Promise<void> {
     const paths = [...this.dirty];
     this.dirty.clear();
+    // The note currently open in the editor: feed its LIVE buffer to the corpus rather than the
+    // last-saved copy, so a word you just deleted stops counting immediately (this is what makes
+    // dictionary pruning fire reliably even before Obsidian autosaves).
+    const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    const activePath = activeView?.file?.path;
     for (const p of paths) {
       const f = this.plugin.app.vault.getAbstractFileByPath(p);
-      if (f instanceof TFile) await this.engine.onFileModified(f);
+      if (f instanceof TFile)
+        await this.engine.onFileModified(f, p === activePath ? activeView!.editor.getValue() : undefined);
     }
     // The corpus now reflects these edits, so its document-frequency table is the current
     // answer to "does this dictionary word still exist anywhere?" - prune right away (#8).
@@ -525,6 +565,10 @@ export class PredictiveFeature {
     await this.loadModels();
     await this.engine.rebuildPersonal();
     this.seedActiveDocument();
+    // One-time tidy of the personal dictionary now the engine can answer "do you already know
+    // this?" - clears entries an older build wrongly added (e.g. a proper noun the word list knows,
+    // which was showing a stray "yours" badge).
+    this.reconcileDict();
     // Offer the one-time model download AFTER the plugin is already usable, so a slow
     // or declined download never delays startup. Asked once; `modelPromptShown` makes
     // "not now" stick, and settings has a button to change your mind.
@@ -547,6 +591,14 @@ export class PredictiveFeature {
       (word, saved) => this.onAccepted(word, saved),
     );
     this.plugin.registerEditorSuggest(this.suggest);
+
+    // Keep the within-document cache in step with the live editor (drift guard). Fires per
+    // keystroke but only arms a debounce, so the actual reseed happens ~1s after you pause.
+    this.plugin.registerEditorExtension(
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) this.reseedCache();
+      }),
+    );
 
     // Obsidian-native tag autocomplete on `#`, note-aware and niche-biased.
     const tagSuggest = new TagSuggest(this.plugin.app, this.linkIndex, this.engine, () => this.settings, (word, saved) => this.onAccepted(word, saved));
@@ -712,10 +764,10 @@ export class PredictiveFeature {
             item
               .setTitle("Suggest alternatives")
               .setIcon("wand-2")
-              .onClick(async (evt) => {
+              .onClick(async () => {
                 let alts: string[] = [];
                 try {
-                  alts = await this.engine.wordAlternatives(word, 6);
+                  alts = await this.engine.wordAlternatives(word, 8);
                 } catch {
                   alts = [];
                 }
@@ -723,13 +775,16 @@ export class PredictiveFeature {
                   new Notice(`No alternatives found for “${word}”`);
                   return;
                 }
-                const sub = new Menu();
-                for (const alt of alts) {
-                  const cased = matchCase(word, alt);
-                  sub.addItem((mi) => mi.setTitle(cased).onClick(() => this.applyAlternative(editor, range, cased)));
-                }
-                if (evt instanceof MouseEvent) sub.showAtMouseEvent(evt);
-                else sub.showAtPosition({ x: 0, y: 0 });
+                // Show the alternatives AT the word, in the same style as the completion popup and
+                // accepted with the same key (Tab) - not a mouse-anchored submenu.
+                this.altPopup.open({
+                  editor,
+                  from: range.from,
+                  to: range.to,
+                  items: alts.map((alt) => matchCase(word, alt)),
+                  acceptKey: this.settings.acceptKey,
+                  onAccept: (replacement) => this.applyAlternative(editor, range, replacement),
+                });
               }),
           );
         }
@@ -964,6 +1019,7 @@ export class PredictiveFeature {
   }
 
   dispose(): void {
+    this.altPopup.close();
     for (const scope of this.renderScopes.values()) scope.unload();
     this.renderScopes.clear();
     this.engine.dispose();

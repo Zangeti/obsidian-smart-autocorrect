@@ -23,6 +23,8 @@ import {
   classifyMarkdownContext,
   pathExcluded,
   isDoubledWord,
+  detectCurrency,
+  currencyStyleFor,
   type SentenceCaseConfig,
 } from "./engine/index";
 import { contextWords } from "./context";
@@ -267,6 +269,31 @@ export class AutocorrectController {
     this.justCorrected = true;
   }
 
+  /**
+   * If the text just before the caret ends in a currency amount, reflow it in place: group the
+   * thousands and place the symbol on the configured side ("$1000" → "$1,000"), or turn a currency
+   * word/code after a number into its symbol ("1000 euros" → "€1,000"). Returns true when it acted,
+   * so the boundary handler stops (nothing else should touch the span). One undo step, revertible.
+   */
+  private tryCurrency(editor: Editor, cursor: EditorPosition, uptoToken: string): boolean {
+    if (!this.settings.currencyFormat && !this.settings.currencyWordToSymbol) return false;
+    const hit = detectCurrency(uptoToken, {
+      format: this.settings.currencyFormat,
+      wordToSymbol: this.settings.currencyWordToSymbol,
+      style: currencyStyleFor(this.settings.currencyThousands),
+    });
+    if (!hit) return false;
+    const original = uptoToken.slice(hit.start);
+    const from: EditorPosition = { line: cursor.line, ch: hit.start };
+    const to: EditorPosition = { line: cursor.line, ch: uptoToken.length };
+    // Guard against a stale async buffer: only rewrite if the exact span is still there.
+    if (editor.getLine(cursor.line).slice(hit.start, uptoToken.length) !== original) return false;
+    this.applyCorrection(editor, from, to, hit.text);
+    this.trackCorrection(original, hit.text);
+    this.justCorrected = true;
+    return true;
+  }
+
   private async handleBoundary(editor: Editor, at: EditorPosition | null = null): Promise<void> {
     if (!this.settings.pluginEnabled) return; // master switch off: no autocorrect / capitalisation
     const cursor = at ?? editor.getCursor();
@@ -283,6 +310,12 @@ export class AutocorrectController {
     const before = line.slice(0, cursor.ch);
     // The boundary character is the last char; the token is what precedes it.
     const uptoToken = before.replace(/[\s.,;:!?]+$/, "");
+
+    // Currency tidying runs first and on its OWN settings (independent of autocorrect): it may act
+    // on an amount that has no letter token at all ("$1000") or replace a number+word span wholesale
+    // ("1000 dollars" → "$1,000"), so it must come before the single-word path below.
+    if (this.tryCurrency(editor, cursor, uptoToken)) return;
+
     const tokenMatch = uptoToken.match(/([A-Za-z][A-Za-z'-]*)$/);
     if (!tokenMatch) return;
 

@@ -26,6 +26,14 @@ export interface AutocorrectConfig {
    * → only when the typed word is very unlikely vs. the chosen word.
    */
   infoGainThreshold?: number;
+  /**
+   * Info-gain gate for a NON-word typo (one no lexicon knows). Lower than {@link infoGainThreshold}
+   * on purpose: a string that isn't a word has no business standing as intended text, so a clear
+   * fix should win more readily than when overriding a genuine word. Defaults to
+   * infoGainThreshold × {@link NONWORD_IG_DISCOUNT}. Only applies to lowercase tokens - a
+   * capitalised OOV token is treated as a possible proper noun and kept at the full bar.
+   */
+  nonWordInfoGainThreshold?: number;
   learnList?: Set<string>;
   beta?: number;
   channel?: ChannelConfig;
@@ -82,6 +90,14 @@ export const DEFAULT_AUTOCORRECT: AutocorrectConfig = { infoGainThreshold: 2.5 }
  * that a novel token appears here. Using it is what lets an obvious typo clear the gate.
  */
 const LOG_OOV_TYPO_PRIOR = Math.log(1e-9);
+
+/**
+ * How much cheaper the info-gain gate is for a NON-word than for a real word. A typed string that
+ * isn't a word (per the curated lexicon) is almost certainly a slip, so we correct it more eagerly
+ * - if the fix is ever wrong the user just undoes it (which pins the word). 0.6 keeps a clear
+ * candidate winning while still demanding a plausible one (an unrelated word never clears the gate).
+ */
+const NONWORD_IG_DISCOUNT = 0.6;
 
 /**
  * How many edit operations a genuine typo of an `len`-character word may plausibly contain.
@@ -312,7 +328,15 @@ export function decideCorrection(
   // typed word is enough more surprising than the best candidate. For a non-word the floor
   // above makes a plausible typo clear the gate reliably; for a real word its true prior
   // keeps the bar high - the threshold still tunes eagerness in both regimes.
-  const igThreshold = cfg.infoGainThreshold ?? DEFAULT_AUTOCORRECT.infoGainThreshold!;
+  const baseThreshold = cfg.infoGainThreshold ?? DEFAULT_AUTOCORRECT.infoGainThreshold!;
+  // A non-word that was typed all-lowercase gets the cheaper gate (see NONWORD_IG_DISCOUNT): the
+  // common case of a fast, obvious typo. A capitalised OOV token is left at the full bar - it is
+  // more likely a proper noun the lexicon simply doesn't carry than a misspelling.
+  const nameLike = /[A-Z]/.test(typedToken);
+  const igThreshold =
+    !isReal && !nameLike
+      ? (cfg.nonWordInfoGainThreshold ?? baseThreshold * NONWORD_IG_DISCOUNT)
+      : baseThreshold;
   if (info.deltaI < igThreshold) return no("insufficient-info-gain");
 
   // Replacing a REAL word additionally requires that CONTEXT is what favours the alternative.

@@ -28,6 +28,7 @@ function call(op: string, args: unknown[]): unknown {
     case "loadWordlist": return c.loadWordlist(args[0] as ArrayBuffer);
     case "isKnownWord": return c.isKnownWord(args[0] as string);
     case "documentFrequencies": return c.documentFrequencies(args[0] as string[]);
+    case "knownWords": return c.knownWords(args[0] as string[]);
     case "packGlobal": return c.packGlobal();
     case "rebuildPersonal": return c.rebuildPersonal(args[0] as never);
     case "setFile": return c.setFile(args[0] as string, args[1] as string);

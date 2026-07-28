@@ -99,6 +99,11 @@ export class PredictiveEngineController {
     return this.client.isKnownWord(word);
   }
 
+  /** Which of `words` the engine already recognises (batch isKnownWord). */
+  knownWords(words: string[]): Promise<boolean[]> {
+    return this.client.knownWords(words);
+  }
+
   async loadGlobal(corpusText: string | null): Promise<void> {
     await this.client.loadGlobalText(corpusText);
     await this.refreshStatus();
@@ -138,10 +143,17 @@ export class PredictiveEngineController {
     await this.refreshStatus();
   }
 
-  async onFileModified(file: TFile): Promise<void> {
+  /**
+   * Fold a note's current text into the personal corpus. `liveText`, when given, is the
+   * editor's live buffer for the note the user is actively editing - preferred over
+   * cachedRead(), which returns the LAST SAVED version and so lags the editor by up to a
+   * couple of seconds. That lag is why a word deleted from a note was not reliably pruned
+   * from the personal dictionary: the corpus still counted the saved copy that contained it.
+   */
+  async onFileModified(file: TFile, liveText?: string): Promise<void> {
     if (!this.settings.personalBias) return;
     try {
-      const text = await this.app.vault.cachedRead(file);
+      const text = liveText ?? (await this.app.vault.cachedRead(file));
       // false => the worker has no corpus yet, so a full rebuild is required.
       if (!(await this.client.setFile(file.path, text))) await this.rebuildPersonal();
     } catch {

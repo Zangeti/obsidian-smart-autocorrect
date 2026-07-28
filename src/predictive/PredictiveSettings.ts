@@ -179,6 +179,16 @@ export interface PredictiveSettings {
   suggestTagsOnHash: boolean;
   /** Offer "Suggest alternatives" when right-clicking a word (more eloquent wording). */
   suggestAlternatives: boolean;
+  /** Reflow a currency amount that already has a symbol: group thousands and put the symbol on the
+   *  configured side ("$1000 " → "$1,000 "). */
+  currencyFormat: boolean;
+  /** After a number, convert a spelled-out currency word or ISO code to its symbol and reformat the
+   *  number ("1000 euros " → "€1,000 "). */
+  currencyWordToSymbol: boolean;
+  /** Thousands separator for currency amounts: "comma" → $1,000 ; "period" → 1.000 € ; "none" →
+   *  $1000. The decimal mark and symbol side follow from it (comma/none = English style, symbol
+   *  before; period = European style, symbol after). */
+  currencyThousands: "comma" | "period" | "none";
   /** Keep the note's frontmatter `tags:` in sync with the #tags used in its body: add a
    *  tag when it first appears inline, remove it when its last inline use is deleted. */
   syncFrontmatterTags: boolean;
@@ -269,6 +279,9 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   minLinkWords: 12,
   suggestTagsOnHash: true,
   suggestAlternatives: true,
+  currencyFormat: true,
+  currencyWordToSymbol: true,
+  currencyThousands: "comma",
   syncFrontmatterTags: true,
   replaceLinkMenu: true,
 };
@@ -333,6 +346,26 @@ export function buildPredictiveSettingGroups(
     );
 
   if (personalization) {
+    // Writing stats live right at the top, above every collapsible section, so the headline
+    // numbers are visible the moment settings open - no scrolling, no expanding a group.
+    const topStats = personalization.getStats();
+    b.custom("Your writing stats", (el) => {
+      const saved = el.createEl("p", { cls: "setting-item-description" });
+      saved.createEl("strong", { text: `⌨️ ${topStats.charsSaved.toLocaleString()}` });
+      const hrs =
+        topStats.minutesSaved >= 60
+          ? `${(topStats.minutesSaved / 60).toFixed(1)} hrs`
+          : `${Math.round(topStats.minutesSaved)} min`;
+      saved.appendText(` keystrokes saved · ≈ ${hrs} of typing`);
+      if (topStats.streak > 1)
+        saved.appendText(` · 🔥 ${topStats.streak}-day streak (best ${topStats.bestStreak})`);
+    });
+    row()
+      .setName("Writing stats")
+      .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
+      .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
+      .addButton((b) => b.setButtonText("Reset statistics").setWarning().onClick(() => personalization.onResetStats()));
+
     row()
       .setName("Getting started")
       .setDesc("A quick tour: accepting a suggestion, how typos get fixed, undoing a correction you didn't want, and where to find your stats.")
@@ -602,6 +635,30 @@ export function buildPredictiveSettingGroups(
     );
   toggle("Fix the wrong real word", 'Catches valid words used incorrectly in context ("form" → "from", "their" → "there").', "realWordCorrection");
   toggle("Fix missing spaces", 'Splits run-together words ("alot" → "a lot", "thebank" → "the bank").', "splitCorrection");
+  toggle(
+    "Tidy currency amounts",
+    'Groups the thousands and puts the symbol on the right side once you finish an amount that has a symbol ("$1000" → "$1,000").',
+    "currencyFormat",
+  );
+  toggle(
+    "Currency words to symbols",
+    'After a number, turns a currency word or code into its symbol ("1000 euros" → "€1,000", "50 USD" → "$50"). You have to type the number for it to convert.',
+    "currencyWordToSymbol",
+  );
+  row()
+    .setName("Thousands separator")
+    .setDesc("Which grouping to use in currency amounts. Comma is English-style ($1,000); period is European-style (1.000 €); none leaves the digits ungrouped.")
+    .addDropdown((d) =>
+      d
+        .addOption("comma", "Comma — $1,000")
+        .addOption("period", "Period — 1.000 €")
+        .addOption("none", "None — $1000")
+        .setValue(settings.currencyThousands)
+        .onChange((v) => {
+          settings.currencyThousands = v as PredictiveSettings["currencyThousands"];
+          commit();
+        }),
+    );
   toggle("Smarter context ranking", "Ranks words by how many contexts they appear in, not just raw frequency. Reins in over-eager rare words.", "useContinuation");
   toggle("Adapt to my typing", "Learns the particular key mistakes you tend to make, and corrects them better over time.", "adaptiveKeyboard");
   toggle("Rank by what I pick", "Reorders suggestions based on which ones you actually choose.", "learnedRanking");
@@ -912,26 +969,10 @@ export function buildPredictiveSettingGroups(
   if (!personalization) return b.groups;
   b.group("Personalization", true);
   const stats = personalization.getStats();
-  // Headline gamification stat: characters saved, streak, and estimated time saved.
-  b.custom("Keystrokes saved", (el) => {
-    const saved = el.createEl("p", { cls: "setting-item-description" });
-    saved.createEl("strong", { text: `⌨️ ${stats.charsSaved.toLocaleString()}` });
-    const hrs =
-      stats.minutesSaved >= 60
-        ? `${(stats.minutesSaved / 60).toFixed(1)} hrs`
-        : `${Math.round(stats.minutesSaved)} min`;
-    saved.appendText(` keystrokes saved · ≈ ${hrs} of typing`);
-    if (stats.streak > 1)
-      saved.appendText(` · 🔥 ${stats.streak}-day streak (best ${stats.bestStreak})`);
-  });
+  // The headline keystrokes-saved figure and the "See your stats" button now live at the very
+  // top of the pane (above every collapsible section). This group keeps the deeper controls.
 
-  row()
-    .setName("Writing stats")
-    .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
-    .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
-    .addButton((b) => b.setButtonText("Reset statistics").setWarning().onClick(() => personalization.onResetStats()));
-
-  // Support / Buy me a coffee - placed next to the feel-good stat.
+  // Support / Buy me a coffee.
   b.custom("Support, buy me a coffee", (el) => {
     const support = el.createDiv({ cls: "smart-autocorrect-support" });
     const supportText = support.createEl("p", { cls: "setting-item-description" });

@@ -14,6 +14,7 @@ export * from "./text/profanity.ts";
 export * from "./text/exclude.ts";
 export * from "./text/doubledWord.ts";
 export * from "./text/wordOracle.ts";
+export * from "./text/currency.ts";
 export * from "./text/linkMatch.ts";
 export * from "./text/vector.ts";
 export * from "./text/segment.ts";

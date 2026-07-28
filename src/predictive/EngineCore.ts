@@ -221,10 +221,26 @@ export class EngineCore {
     return words.map((w) => this.lstm!.rarity(w));
   }
 
-  /** More eloquent / academic alternatives for a single word (the "suggest alternatives"
-   *  action). Needs the neural model's embedding; empty when it isn't loaded. */
+  /**
+   * More eloquent / academic alternatives for a single word (the "suggest alternatives" action).
+   *
+   * The neural model proposes by embedding neighbourhood; the WORD ORACLE then validates each
+   * candidate. Embedding rank alone can't tell a rare real word ("gargantuan") from foreign/OCR
+   * junk that shares its rank band ("vistamp", "zalaqi") - but the curated 274k word list can, and
+   * the same filter drops misspellings that leaked into the LM vocab ("recieve"). We over-fetch
+   * from the model, keep only real words, and never surface a blocked/NSFW one.
+   */
   wordAlternatives(word: string, k = 6): string[] {
-    return this.lstm ? this.lstm.suggestAlternatives(word, k) : [];
+    if (!this.lstm) return [];
+    const raw = this.lstm.suggestAlternatives(word, k * 4);
+    const out: string[] = [];
+    for (const w of raw) {
+      if (out.length >= k) break;
+      if (!this.isRealWord(w)) continue; // real English words only - kills junk and misspellings
+      if (this.blockedSurface(w)) continue;
+      out.push(w);
+    }
+    return out;
   }
 
   private p() {
@@ -348,6 +364,16 @@ export class EngineCore {
   documentFrequencies(words: string[]): number[] | null {
     if (!this.corpus) return null;
     return words.map((w) => this.corpus!.documentFrequency(w));
+  }
+
+  /**
+   * Which of `words` the engine already recognises (isKnownWord). A personal-dictionary entry
+   * should only ever be a word NOTHING else knows - anything the vocab / word list already
+   * recognises was added by an older build (before the add-guard was case-folded) and now shows a
+   * misleading "yours" badge. The main thread uses this to prune those stale entries.
+   */
+  knownWords(words: string[]): boolean[] {
+    return words.map((w) => this.isKnownWord(w));
   }
 
   packGlobal(): ArrayBuffer | null {

@@ -89,6 +89,7 @@ export class InferenceClient {
   loadWordlist(buf: ArrayBuffer): Promise<void> { return this.call("loadWordlist", [buf], [buf]); }
   isKnownWord(word: string): Promise<boolean> { return this.call("isKnownWord", [word]); }
   documentFrequencies(words: string[]): Promise<number[] | null> { return this.call("documentFrequencies", [words]); }
+  knownWords(words: string[]): Promise<boolean[]> { return this.call("knownWords", [words]); }
   packGlobal(): Promise<ArrayBuffer | null> { return this.call("packGlobal", []); }
 
   rebuildPersonal(entries: { path: string; text: string }[] | null): Promise<void> {
