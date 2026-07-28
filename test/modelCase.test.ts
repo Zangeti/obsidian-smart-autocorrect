@@ -235,12 +235,15 @@ test("suggestAlternatives: returns real vocab words, never the query, [] for OOV
   const m = LstmLanguageModel.fromBuffer(buildBin({
     vocab: ["<unk>", "use", "help", "big", "the", "quick", "brown", "fox", "cat", "dog"],
   }));
-  assert.deepEqual(m.suggestAlternatives("zzzznotaword", 5), []); // out of vocab
-  const alts = m.suggestAlternatives("use", 5);
+  assert.deepEqual(m.suggestAlternatives("zzzznotaword", [], 5), []); // out of vocab
+  const alts = m.suggestAlternatives("use", [], 5);
   assert.ok(Array.isArray(alts));
   assert.ok(alts.length <= 5);
   assert.ok(!alts.includes("use"), "never suggests the query itself");
   for (const a of alts) assert.ok(m.hasWord(a), `alternative "${a}" must be a real vocab word`);
+  // Passing context must not throw and still returns real vocab words (context-aware ranking).
+  const withCtx = m.suggestAlternatives("use", ["we", "should"], 5);
+  for (const a of withCtx) assert.ok(m.hasWord(a), `context alternative "${a}" must be real vocab`);
 });
 
 test("a word outside the vocab is returned untouched", () => {

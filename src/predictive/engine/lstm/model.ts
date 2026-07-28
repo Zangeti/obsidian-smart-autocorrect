@@ -120,6 +120,28 @@ function inflectionClass(w: string): "ing" | "ed" | "s" | "" {
   return "";
 }
 
+/**
+ * Seed opposite pairs (positive/high, negative/low) used to LEARN an antonym DIRECTION, not as a
+ * lookup list. Mean(positive − negative) over these gives a "valence / magnitude" axis: synonyms of
+ * a word sit on the same side of it, its antonyms on the far side. We penalise a candidate by how
+ * strongly it MIRRORS the query across this axis, which self-scales (the penalty vanishes when
+ * either the query or the candidate is near the axis origin), so it removes the clear antonyms
+ * without a hand-maintained blocklist and without hurting weakly-polarised words.
+ */
+const ANTONYM_SEEDS: [string, string][] = [
+  // magnitude / physical
+  ["strong", "weak"], ["big", "small"], ["hot", "cold"], ["fast", "slow"], ["high", "low"],
+  ["hard", "soft"], ["light", "dark"], ["bright", "dim"], ["full", "empty"], ["clean", "dirty"],
+  ["sharp", "dull"], ["loud", "quiet"], ["wide", "narrow"], ["thick", "thin"], ["warm", "cool"],
+  ["deep", "shallow"], ["heavy", "light"], ["tall", "short"], ["fast", "slow"],
+  // sentiment / valence (several pairs so the axis captures evaluative words, not just size)
+  ["good", "bad"], ["great", "terrible"], ["excellent", "awful"], ["wonderful", "dreadful"],
+  ["nice", "nasty"], ["pleasant", "horrible"], ["superb", "lousy"], ["happy", "sad"], ["rich", "poor"],
+  // direction / change (so verbs like increase/decrease separate too)
+  ["increase", "decrease"], ["rise", "fall"], ["grow", "shrink"], ["gain", "lose"], ["expand", "contract"],
+  ["improve", "worsen"], ["accept", "reject"], ["win", "lose"],
+];
+
 /** Is `w` a negation of `base` ("happy"→"unhappy", "clear"→"unclear", "like"→"dislike")? The tied
  *  embedding places antonyms very close to their root, so a negated form is a frequent false
  *  "alternative"; this catches the productive morphological ones cheaply. */
@@ -517,13 +539,13 @@ export class LstmLanguageModel implements LanguageModel {
     return n;
   }
 
-  /** The formal↔casual steering direction from ELOQUENCE_PAIRS, unit-normalised, or null when the
-   *  seed words aren't in this vocab. Computed once. */
-  private _eloqDir: Float32Array | null = null;
-  private _eloqTried = false;
-  private eloquenceDir(): Float32Array | null {
-    if (this._eloqTried) return this._eloqDir;
-    this._eloqTried = true;
+  /**
+   * A unit-normalised steering direction learned from (positive, negative) seed PAIRS: the mean of
+   * (unit(pos) − unit(neg)) over every pair whose words are both in vocab. Used for two axes - the
+   * formal↔casual "eloquence" axis and the valence/magnitude "antonym" axis - which differ only in
+   * their seeds. Null when no seed pair is usable.
+   */
+  private seedDirection(pairs: [string, string][]): Float32Array | null {
     const { dim } = this, q = this.embQ, sw = this.scaleW;
     const dir = new Float32Array(dim);
     let cnt = 0;
@@ -536,16 +558,34 @@ export class LstmLanguageModel implements LanguageModel {
       const inv = sign / (Math.sqrt(nn) || 1);
       for (let a = 0; a < dim; a++) dir[a] += q[b + a] * s * inv;
     };
-    for (const [f, c] of ELOQUENCE_PAIRS) {
-      if (this.wid.get(f) === undefined || this.wid.get(c) === undefined) continue;
-      add(f, +1); add(c, -1); cnt++;
+    for (const [pos, neg] of pairs) {
+      if (this.wid.get(pos) === undefined || this.wid.get(neg) === undefined) continue;
+      add(pos, +1); add(neg, -1); cnt++;
     }
-    if (cnt === 0) return (this._eloqDir = null);
+    if (cnt === 0) return null;
     let n = 0;
     for (const x of dir) n += x * x;
     const inv = 1 / (Math.sqrt(n) || 1);
     for (let a = 0; a < dim; a++) dir[a] *= inv;
-    return (this._eloqDir = dir);
+    return dir;
+  }
+
+  /** The formal↔casual steering direction from ELOQUENCE_PAIRS, unit-normalised (cached). */
+  private _eloqDir: Float32Array | null = null;
+  private _eloqTried = false;
+  private eloquenceDir(): Float32Array | null {
+    if (!this._eloqTried) { this._eloqTried = true; this._eloqDir = this.seedDirection(ELOQUENCE_PAIRS); }
+    return this._eloqDir;
+  }
+
+  /** The valence/magnitude "antonym" direction from ANTONYM_SEEDS, unit-normalised (cached). A
+   *  candidate whose projection MIRRORS the query's (opposite sign, both far from 0) is very likely
+   *  an antonym rather than a synonym. */
+  private _antiDir: Float32Array | null = null;
+  private _antiTried = false;
+  private antonymDir(): Float32Array | null {
+    if (!this._antiTried) { this._antiTried = true; this._antiDir = this.seedDirection(ANTONYM_SEEDS); }
+    return this._antiDir;
   }
 
   /**
@@ -558,7 +598,71 @@ export class LstmLanguageModel implements LanguageModel {
    * On-demand only (never per keystroke): it scans the whole vocab, ~V·dim MACs, tens of ms.
    * Lowercase surfaces; the caller cases them to match the original word.
    */
-  suggestAlternatives(word: string, k = 6): string[] {
+  suggestAlternatives(word: string, context: string[] = [], k = 6): string[] {
+    const pool = this.neighbourPool(word, 40);
+    if (pool.length === 0) return [];
+    const id = this.wid.get(word.toLowerCase())!;
+    const antiDir = this.antonymDir();
+    const qAnti = antiDir ? this.axisProj(id, antiDir) : 0;
+
+    // --- context fit (lexical-substitution literature) --------------------------------------
+    // A good substitute both MEANS the same (embedding similarity) and FITS HERE (the sentence
+    // predicts it). We measure fit as the model's context GAIN, log P(c|context) − log P(c): how
+    // much more the sentence predicts c than its base frequency does. The gain (not the raw
+    // probability) removes the model's pull toward common words, so a rarer but well-fitting synonym
+    // is not unfairly demoted - the frequency-debiased context term of Melamud et al. (2015).
+    const hasCtx = context.length > 0;
+    const baseGain = hasCtx ? this.logProbId(id, context) - this.logProbId(id, []) : 0;
+
+    const scored = pool.map((c) => {
+      // Antonym mirror: >0 when the candidate sits on the OPPOSITE side of the valence/magnitude
+      // axis from the query (and both are off-centre). Self-scaling - it vanishes when either is
+      // near the axis origin - so it targets clear opposites (strong↔weak) without touching
+      // weakly-polarised words. Learned from ANTONYM_SEEDS; there is no antonym lookup list.
+      const cAnti = antiDir ? this.axisProj(c.id, antiDir) : 0;
+      const mirror = Math.max(0, -qAnti * cAnti);
+      let ctx = 0;
+      if (hasCtx) {
+        const gain = this.logProbId(c.id, context) - this.logProbId(c.id, []);
+        ctx = Math.tanh((gain - baseGain) / 4); // >0: fits at least as well as the word written
+      }
+      // Context fits an antonym as happily as a synonym ("really ___" loves "bad"), so it must not
+      // be allowed to RESCUE a clear opposite: its bonus is gated off for mirrored candidates, which
+      // the penalty then pushes down. Similarity anchors; sophistication is a light tiebreak.
+      const ctxGate = mirror > 0.008 ? 0 : 1;
+      const score = c.cos + ctxGate * 0.55 * ctx + 0.08 * c.rarer + 0.10 * c.formal - 16 * mirror;
+      return { w: c.w, score, cos: c.cos };
+    });
+    scored.sort((a, b) => b.score - a.score || b.cos - a.cos);
+    return scored.slice(0, k).map((c) => c.w);
+  }
+
+  /** Cosine projection of vocab row `rowId` onto a unit direction (how far along the axis it sits). */
+  private axisProj(rowId: number, dir: Float32Array): number {
+    const { dim } = this, q = this.embQ, sw = this.scaleW, s = sw[rowId], b = rowId * dim;
+    let d = 0;
+    for (let a = 0; a < dim; a++) d += q[b + a] * s * dir[a];
+    return d / this.rowNorms()[rowId];
+  }
+
+  /**
+   * The on-meaning candidate pool for {@link suggestAlternatives}: the query word's nearest
+   * embedding neighbours, inflection-matched, with same-root forms and morphological negations
+   * dropped. Returns each with its raw signals (cosine similarity, rarity, formal-axis projection),
+   * so a ranker - here or in a test harness - can weight them however it likes. Context and the
+   * antonym penalty are applied by the caller. Scans the whole vocab, so it is on-demand only.
+   */
+  alternativeCandidates(
+    word: string,
+    poolSize = 40,
+  ): { w: string; id: number; cos: number; rarer: number; formal: number }[] {
+    return this.neighbourPool(word, poolSize);
+  }
+
+  private neighbourPool(
+    word: string,
+    poolSize: number,
+  ): { w: string; id: number; cos: number; rarer: number; formal: number }[] {
     const lower = word.toLowerCase();
     const id = this.wid.get(lower);
     if (id === undefined) return [];
@@ -574,27 +678,13 @@ export class LstmLanguageModel implements LanguageModel {
     }
     const norms = this.rowNorms();
     const dir = this.eloquenceDir();
-    const proj = (rowId: number): number => {
-      if (!dir) return 0;
-      const b = rowId * dim, s = sw[rowId];
-      let d = 0;
-      for (let a = 0; a < dim; a++) d += q[b + a] * s * dir[a];
-      return d / norms[rowId];
-    };
-    const qProj = proj(id);
+    const qProj = dir ? this.axisProj(id, dir) : 0;
     const cls = inflectionClass(lower);
-    // The vocab is frequency-sorted (id 0 = <unk>, low ids = common words), so a word's id is a
-    // rank: a higher id than the query means a RARER, usually more sophisticated word. That is a
-    // far cleaner "more eloquent" signal than the embedding direction alone, and - because
-    // antonyms of a common word tend to be common too (good/bad, big/small) - gently ranking rarer
-    // words up also pushes the antonym trap down. We BLEND three signals rather than hard-filter on
-    // any one: semantic closeness (cosine), sophistication (rarity), and the formal↔casual axis.
-    const cand: { w: string; score: number; cos: number }[] = [];
+    const cand: { w: string; id: number; cos: number; rarer: number; formal: number }[] = [];
     for (let i = 1; i < V; i++) { // skip <unk> at 0
       if (i === id) continue;
       // Skip the rarest tail of the (frequency-sorted) vocab: it is mostly proper-noun fragments,
-      // foreign words and OCR junk ("pygmygoby", "tsibbur"), which the rarity bonus would otherwise
-      // float to the top when a word has few good neighbours.
+      // foreign words and OCR junk ("pygmygoby", "tsibbur").
       if (i > V * 0.66) continue;
       const w = this.vocab[i];
       if (!/^[a-z]+$/.test(w)) continue; // plain lowercase words only
@@ -603,23 +693,19 @@ export class LstmLanguageModel implements LanguageModel {
       let d = 0;
       for (let a = 0; a < dim; a++) d += qv[a] * q[b + a];
       const cos = (d * s) / norms[i];
-      // Genuine synonyms sit at high cosine (gargantuan~big, conundrum~problem all clear 0.4); the
-      // rare junk that the sophistication bonus tries to float up only ever reaches ~0.30-0.35, so
-      // a firm floor here is what separates "eloquent" from "obscure noise".
+      // Genuine synonyms sit at high cosine; the rare junk only reaches ~0.30-0.35.
       if (cos < 0.36) continue;
       if (inflectionClass(w) !== cls) continue; // keep number/tense consistent
       if (sameLemma(lower, w)) continue; // not an inflection/derivation of the same word
-      if (isNegationOf(lower, w)) continue; // an antonym, not an alternative
-      // Rarity: log-ratio of ranks, positive when the candidate is rarer than the query. Capped so
-      // a genuinely obscure word can't dominate a close, usefully-rare synonym.
+      if (isNegationOf(lower, w)) continue; // a morphological negation ("unclear") is not an alternative
       const rarer = Math.min(1.5, Math.max(0, Math.log((i + 60) / (id + 60))));
-      // Formality: only the part of the axis where the candidate sits ABOVE the query counts.
-      const formal = Math.max(0, proj(i) - qProj);
-      const score = cos + 0.18 * rarer + 0.22 * formal;
-      cand.push({ w, score, cos });
+      const formal = dir ? Math.max(0, this.axisProj(i, dir) - qProj) : 0;
+      cand.push({ w, id: i, cos, rarer, formal });
     }
-    cand.sort((a, b) => b.score - a.score || b.cos - a.cos);
-    return cand.slice(0, k).map((c) => c.w);
+    // Keep the strongest `poolSize` by a context-free base score, so the context reranker (and any
+    // experiment) works over a good shortlist instead of the whole vocab.
+    cand.sort((a, b) => b.cos + 0.1 * b.rarer + 0.12 * b.formal - (a.cos + 0.1 * a.rarer + 0.12 * a.formal));
+    return cand.slice(0, poolSize);
   }
 
   /**

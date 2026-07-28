@@ -230,9 +230,9 @@ export class EngineCore {
    * the same filter drops misspellings that leaked into the LM vocab ("recieve"). We over-fetch
    * from the model, keep only real words, and never surface a blocked/NSFW one.
    */
-  wordAlternatives(word: string, k = 6): string[] {
+  wordAlternatives(word: string, context: string[] = [], k = 6): string[] {
     if (!this.lstm) return [];
-    const raw = this.lstm.suggestAlternatives(word, k * 4);
+    const raw = this.lstm.suggestAlternatives(word, context, k * 4);
     const out: string[] = [];
     for (const w of raw) {
       if (out.length >= k) break;

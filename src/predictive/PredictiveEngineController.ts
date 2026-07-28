@@ -66,9 +66,10 @@ export class PredictiveEngineController {
     return this.client.rarities(words);
   }
 
-  /** More eloquent / academic alternatives for a single word (right-click "Suggest alternatives"). */
-  wordAlternatives(word: string, k = 6): Promise<string[]> {
-    return this.client.wordAlternatives(word, k);
+  /** Context-aware alternatives for a single word (right-click "Suggest alternatives"). `context` is
+   *  the words preceding the target, so the ranking can prefer substitutes that fit the sentence. */
+  wordAlternatives(word: string, context: string[], k = 6): Promise<string[]> {
+    return this.client.wordAlternatives(word, context, k);
   }
 
   private async refreshStatus(): Promise<void> {

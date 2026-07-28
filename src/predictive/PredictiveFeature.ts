@@ -18,6 +18,7 @@ import { openLinkSelection } from "./LinkSelectionModal";
 import { ensureAssets, missingAssets } from "./ModelAssets";
 import { LinkChooser } from "./LinkChooser";
 import { AlternativesPopup } from "./AlternativesPopup";
+import { contextWords } from "./context";
 import { PersonalizationStore } from "./PersonalizationStore";
 import { PredictiveSuggest } from "./PredictiveSuggest";
 import { AutocorrectController } from "./AutocorrectController";
@@ -760,6 +761,11 @@ export class PredictiveFeature {
         // Suggest more eloquent / academic alternatives for the word (needs the neural model).
         if (this.settings.suggestAlternatives && this.engine.ready && /^[A-Za-z][A-Za-z'-]*$/.test(word)) {
           const range = this.selectionOrWordRange(editor);
+          // Left context (the words leading up to the target) lets the ranker prefer substitutes that
+          // fit THIS sentence - "the coffee was very strong" → potent, not weak. A couple of lines is
+          // plenty; the model reads only what precedes the word.
+          const beforeText = editor.getRange({ line: Math.max(0, range.from.line - 2), ch: 0 }, range.from);
+          const ctx = contextWords(beforeText, this.settings.extraAbbreviations);
           menu.addItem((item) =>
             item
               .setTitle("Suggest alternatives")
@@ -767,7 +773,7 @@ export class PredictiveFeature {
               .onClick(async () => {
                 let alts: string[] = [];
                 try {
-                  alts = await this.engine.wordAlternatives(word, 8);
+                  alts = await this.engine.wordAlternatives(word, ctx, 8);
                 } catch {
                   alts = [];
                 }
