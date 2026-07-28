@@ -9,18 +9,22 @@
 
 ## Core features
 
-- **Real-time autocorrect** — resolves typos automatically as you write.
-- **Phrase completion** — predicts your next word, and sometimes whole phrases (press **Tab** to accept).
-- **Contextual suggestions** — aware of your notes and the sentence you're typing.
-- **100% local** — runs entirely on-device for absolute data privacy.
+| Feature | What it does |
+| --- | --- |
+| **Real-time autocorrect** | Resolves typos automatically as you write. |
+| **Phrase completion** | Predicts your next word, and sometimes whole phrases. Press **Tab** to accept. |
+| **Contextual suggestions** | Aware of your notes and the sentence you're typing. |
+| **100% local** | Runs entirely on-device for absolute data privacy. |
 
 ## Also included
 
-- **Suggest alternatives** ✨ — right-click any word for more eloquent, academic wording (good → substantial, help → facilitate, big → immense). On-device too.
-- **Smart capitalisation** — sentence starts, names and places, and abbreviations like `e.g.` and `U.S.` handled for you.
-- **Learns your writing** — words and phrasing from your own notes come up first. Wrong correction? Just undo (**Ctrl/Cmd-Z**): it puts your text back, adds the word to your dictionary, and learns from it.
-- **Note links** (experimental) — text that matches one of your notes is underlined; hover to preview, click to link.
-- **Writing stats** — a running tally of keystrokes saved, typing time saved, and your daily streak.
+| Feature | What it does |
+| --- | --- |
+| **Suggest alternatives** ✨ | Right-click any word for more eloquent wording (good to substantial, help to facilitate, big to immense). On-device too. |
+| **Smart capitalisation** | Sentence starts, names and places, and abbreviations like `e.g.` and `U.S.` |
+| **Learns your writing** | Words from your own notes come up first. Wrong correction? Just undo (**Ctrl/Cmd-Z**): it restores your text, adds the word to your dictionary, and learns from it. |
+| **Note links** (experimental) | Text that matches one of your notes is underlined. Hover to preview, click to link. |
+| **Writing stats** | Keystrokes saved, typing time saved, and your daily streak. |
 
 <img src="docs/stats.png" alt="The writing stats dashboard, showing keystrokes saved, typing time saved and current streak" width="440">
 
@@ -28,7 +32,7 @@
 
 1. Install and enable the plugin.
 2. Accept the one-time model download (86 MB) when prompted.
-3. Start typing — there's nothing to configure. Everything in settings is optional.
+3. Start typing. There's nothing to configure; everything in settings is optional.
 
 ## Privacy
 
