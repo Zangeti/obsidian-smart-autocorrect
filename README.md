@@ -43,7 +43,7 @@ It runs completely offline, so your notes stay private and never leave your devi
 
 100% local, with no telemetry and no cloud. The only network request is the one-time model download, which you can decline. Anything the plugin learns lives in `personalization.json` inside the plugin folder, so it travels with your vault and never touches your notes.
 
-**Supported languages:** English only for now. If you'd like another language, please [open an issue](https://github.com/Zangeti/obsidian-smart-autocorrect/issues) and let me know.
+**Supported languages:** English only. If you'd like another language, please [open an issue](https://github.com/Zangeti/obsidian-smart-autocorrect/issues).
 
 ## ☕ Support
 
