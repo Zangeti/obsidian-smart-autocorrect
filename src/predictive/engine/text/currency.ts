@@ -1,107 +1,97 @@
 /**
- * Currency tidying: turn "$1000" into "$1,000" (or "1.000 €"), and "1000 dollars" into the right
- * symbol with the number reformatted. Pure and unit-tested; the plugin runs it on a word boundary.
+ * Currency tidying: turn "$1000" into "$1,000", "1000 dollars" into "$1,000", and place the symbol
+ * where that currency conventionally sits. Pure and unit-tested; the plugin runs it on a boundary
+ * and offers it in the suggestion popup.
  *
  * Two independent behaviours, each gated by the caller:
- *   - format:       reflow an amount that already has a symbol (group thousands, put the symbol on
- *                   the configured side).
- *   - wordToSymbol: replace a spelled-out currency word after a number with its symbol.
+ *   - format:       reflow an amount that already has a symbol (group the thousands, move the symbol
+ *                   to the side that currency normally uses).
+ *   - wordToSymbol: replace a spelled-out currency word/code after a number with its symbol.
  *
- * A locale "style" decides the thousands/decimal separators and where the symbol sits, so an
- * English writer gets "$1,000.50" and a German one "1.000,50 €" from the same input.
+ * The user picks only the THOUSANDS separator (comma / period / none). The decimal mark follows from
+ * it (the other of . and ,), except with "none", where whatever the user typed is preserved. The
+ * symbol SIDE is a property of the currency, not a setting: "$100" but "100 kr".
  */
 
 export interface CurrencyStyle {
-  /** Groups-of-three separator, e.g. "," (English) or "." (German). */
+  /** Groups-of-three separator: "," , "." or "" (none). */
   thousands: string;
-  /** Decimal point, e.g. "." (English) or "," (German). */
-  decimal: string;
-  /** Symbol before the number ("$1,000") vs after it ("1.000 €"). */
-  symbolBefore: boolean;
-  /** A space between the symbol and the number ("1.000 €" vs "$1000"). */
-  space: boolean;
+  /** Decimal mark to emit: "." , "," , or null = keep whatever the user typed. */
+  decimal: string | null;
 }
 
-/** The two presets the settings expose. `thousands`/`decimal`/side all move together per locale. */
-export const CURRENCY_STYLES: Record<"english" | "german", CurrencyStyle> = {
-  english: { thousands: ",", decimal: ".", symbolBefore: true, space: false },
-  german: { thousands: ".", decimal: ",", symbolBefore: false, space: true },
-};
-
-/**
- * Build a style from the user's chosen thousands separator. Comma and "none" follow the English
- * convention (decimal point, symbol before the number); a period separator follows the European one
- * (decimal comma, symbol after with a space), which is the only combination in which a "." thousands
- * mark is unambiguous.
- */
+/** Map the one user setting (thousands separator) to a full style. */
 export function currencyStyleFor(thousands: "comma" | "period" | "none"): CurrencyStyle {
-  if (thousands === "period") return CURRENCY_STYLES.german;
-  if (thousands === "none") return { thousands: "", decimal: ".", symbolBefore: true, space: false };
-  return CURRENCY_STYLES.english;
+  if (thousands === "period") return { thousands: ".", decimal: "," }; // 1.000,50
+  if (thousands === "none") return { thousands: "", decimal: null }; //   1000.50 or 1000,50 (kept)
+  return { thousands: ",", decimal: "." }; //                              1,000.50
 }
 
 /**
- * Spelled-out currency words / ISO codes → symbol. Lower-cased keys, matched case-insensitively, so
- * "USD", "usd", "Dollars" all resolve. Covers the major world currencies; several legitimately
- * share a sign ($ for USD/CAD/AUD/NZD/SGD/HKD/MXN, ¥ for JPY/CNY, kr for the Nordic krona/krone),
- * which is fine - the sign is what the writer wants on the page.
+ * Spelled-out currency words / ISO codes to symbol. Lower-cased keys, matched case-insensitively.
+ * Several currencies legitimately share a sign ($ for USD/CAD/AUD/…, ¥ for JPY/CNY) - the sign is
+ * what the writer wants on the page.
  */
 const WORD_TO_SYMBOL: Record<string, string> = {
-  // US dollar and the other dollar currencies (all use "$").
   dollar: "$", dollars: "$", usd: "$", buck: "$", bucks: "$",
   cad: "$", aud: "$", nzd: "$", sgd: "$", hkd: "$", mxn: "$", peso: "$", pesos: "$",
-  // Euro.
   euro: "€", euros: "€", eur: "€",
-  // Pound sterling.
   pound: "£", pounds: "£", gbp: "£", quid: "£", sterling: "£",
-  // Yen / yuan / renminbi.
   yen: "¥", jpy: "¥", yuan: "¥", cny: "¥", rmb: "¥", renminbi: "¥",
-  // Indian rupee (and other rupees share the sign closely enough).
   rupee: "₹", rupees: "₹", inr: "₹",
-  // Swiss franc / CFA franc.
   franc: "Fr", francs: "Fr", chf: "Fr",
-  // Russian rouble.
   ruble: "₽", rubles: "₽", rouble: "₽", roubles: "₽", rub: "₽",
-  // Korean won.
   won: "₩", krw: "₩",
-  // Turkish lira.
   lira: "₺", try: "₺",
-  // Brazilian real.
   real: "R$", reais: "R$", brl: "R$",
-  // South African rand.
   rand: "R", zar: "R",
-  // Nordic krona / krone.
   krona: "kr", kronor: "kr", krone: "kr", kroner: "kr", sek: "kr", nok: "kr", dkk: "kr",
-  // Polish złoty.
   zloty: "zł", zlotych: "zł", pln: "zł",
-  // Thai baht.
   baht: "฿", thb: "฿",
-  // Israeli shekel.
   shekel: "₪", shekels: "₪", ils: "₪",
-  // Nigerian naira.
   naira: "₦", ngn: "₦",
-  // Philippine peso (distinct sign from the Latin-American pesos above).
   php: "₱",
-  // Vietnamese dong.
   dong: "₫", vnd: "₫",
-  // Indonesian rupiah / Malaysian ringgit.
   rupiah: "Rp", idr: "Rp", ringgit: "RM", myr: "RM",
-  // Ukrainian hryvnia.
   hryvnia: "₴", uah: "₴",
-  // Gulf & other common ISO codes (no distinct Unicode sign in wide use → keep the code).
   aed: "AED", sar: "SAR", qar: "QAR",
-  // Crypto, since people write it the same way.
   btc: "₿", bitcoin: "₿",
 };
 
 /**
- * Symbols recognised by the "already has a symbol" reflow path, longest first so multi-character
- * signs ("R$") match before their single-character prefix. Kept to unambiguous currency marks -
- * bare letter clusters like "kr" are only produced by the word path, never scanned for here.
+ * Currencies whose sign conventionally FOLLOWS the number, with a space: "100 kr", "100 zł", the
+ * Gulf ISO codes. Everything else hugs the front of the number ("$100", "€100", "R$100").
  */
-const FORMAT_SYMBOLS = ["R$", "$", "€", "£", "¥", "₹", "₽", "₩", "₺", "₴", "₪", "₦", "₱", "₫", "฿", "₿"];
+const SYMBOL_AFTER = new Set(["kr", "zł", "AED", "SAR", "QAR"]);
 
-/** Group a pure-digit integer string into threes: "1000000" → "1,000,000". */
+/** Which side `symbol` sits on and whether it takes a spacing gap. */
+export function symbolPlacement(symbol: string): { before: boolean; space: boolean } {
+  const after = SYMBOL_AFTER.has(symbol);
+  return { before: !after, space: after };
+}
+
+/**
+ * Symbols recognised by the "already has a symbol" reflow path, longest first so multi-character
+ * signs ("R$") match before their single-character prefix. Kept to unambiguous currency marks - bare
+ * letter clusters like "kr" are only ever produced by the word path, never scanned for here.
+ */
+const FORMAT_SYMBOLS = ["R$", "$", "€", "£", "¥", "₹", "₽", "₩", "₺", "₴", "₪", "₦", "₱", "₫", "฿", "₿", "Rp", "RM"];
+
+/** The symbol a currency WORD/code maps to, or null. Exposed for the suggestion popup. */
+export function currencySymbolForWord(word: string): string | null {
+  return WORD_TO_SYMBOL[word.toLowerCase()] ?? null;
+}
+
+/** Is `prefix` the start of any currency word/code? Lets the popup keep triggering on a number-glued
+ *  letter run ("1000eu…") that would otherwise be dismissed as an ordinal/unit suffix. */
+export function isCurrencyWordPrefix(prefix: string): boolean {
+  if (!prefix) return false;
+  const p = prefix.toLowerCase();
+  for (const key in WORD_TO_SYMBOL) if (key.startsWith(p)) return true;
+  return false;
+}
+
+/** Group a pure-digit integer string into threes: "1000000" -> "1,000,000". */
 export function groupThousands(digits: string, sep: string): string {
   let out = "";
   for (let i = 0; i < digits.length; i++) {
@@ -112,39 +102,45 @@ export function groupThousands(digits: string, sep: string): string {
 }
 
 /**
- * Parse a raw typed amount (which may contain grouping separators, spaces, and one decimal part)
- * into pure integer digits and up-to-two decimal digits. A separator immediately followed by 1-2
- * digits at the very END is read as the decimal; every other separator or space is grouping and is
- * stripped. Returns null when there are no digits.
+ * Parse a raw typed amount into integer digits and an optional decimal part, remembering which
+ * separator the user used for the decimal. A separator followed by 1-2 digits at the very END is the
+ * decimal; any other separator is grouping and is stripped. Returns null when there are no digits.
  */
-export function parseAmount(raw: string): { int: string; dec: string } | null {
+export function parseAmount(raw: string): { int: string; dec: string; decSep: string } | null {
   if (!/\d/.test(raw)) return null;
   let body = raw.trim();
   let dec = "";
-  const decMatch = body.match(/[.,](\d{1,2})$/);
-  // Only treat a trailing separator group as a decimal if what precedes it also has digits, so a
-  // bare "1,00" reads as 1.00 but a lone grouping like "1,000" (3 digits) stays integer.
-  if (decMatch && decMatch[1].length <= 2 && /\d/.test(body.slice(0, body.length - decMatch[0].length))) {
-    dec = decMatch[1];
+  let decSep = ".";
+  const decMatch = body.match(/([.,])(\d{1,2})$/);
+  // Treat a trailing "sep + 1-2 digits" as a decimal only if digits precede it, so "1,000" (a group
+  // of three) stays an integer while "1,50" reads as 1.50.
+  if (decMatch && /\d/.test(body.slice(0, body.length - decMatch[0].length))) {
+    decSep = decMatch[1];
+    dec = decMatch[2];
     body = body.slice(0, body.length - decMatch[0].length);
   }
   const int = body.replace(/\D/g, "");
   if (!int) return null;
-  return { int, dec };
+  return { int, dec, decSep };
 }
 
-/** Reformat a raw amount's digits with the style's separators. "1000000" → "1,000,000". */
+/**
+ * Reformat a raw amount's digits with the style's thousands separator, keeping (or converting) the
+ * decimal mark. With a "none" style the decimal the user typed is preserved; otherwise it becomes
+ * the style's decimal (the one the thousands separator does not use).
+ */
 export function formatAmount(raw: string, style: CurrencyStyle): string {
   const p = parseAmount(raw);
   if (!p) return raw;
   const grouped = groupThousands(p.int, style.thousands);
-  return p.dec ? grouped + style.decimal + p.dec : grouped;
+  if (!p.dec) return grouped;
+  return grouped + (style.decimal ?? p.decSep) + p.dec;
 }
 
-/** Assemble a symbol and a formatted number per the style's side/spacing. */
-export function composeCurrency(symbol: string, amount: string, style: CurrencyStyle): string {
-  const gap = style.space ? " " : "";
-  return style.symbolBefore ? `${symbol}${gap}${amount}` : `${amount}${gap}${symbol}`;
+/** Assemble a symbol and a formatted number on the currency's conventional side. */
+export function composeCurrency(symbol: string, amount: string): string {
+  const { before, space } = symbolPlacement(symbol);
+  return before ? `${symbol}${amount}` : `${amount}${space ? " " : ""}${symbol}`;
 }
 
 export interface CurrencyOptions {
@@ -156,42 +152,45 @@ export interface CurrencyOptions {
 }
 
 /**
- * Look at the text just before the caret (the boundary character already removed) and, if it ends
- * in a currency expression, return the slice to replace and its replacement. `start` is the index
- * in `before` where the replacement begins; the caller replaces `before.slice(start)`.
+ * Look at the text just before the caret (any boundary character already removed) and, if it ends in
+ * a currency expression, return the slice to replace and its replacement. `start` is the index in
+ * `before` where the replacement begins; the caller replaces `before.slice(start)`.
  *
- * Returns null when nothing applies, when the result would equal the input, or when the number is
- * glued to a letter/word (so "css3000px" or a hex-ish token is never touched).
+ * The number is a single contiguous run of digits and grouping marks - NOT spanning a space - so
+ * "2003 34 dollars" converts only "34 dollars" (to "2003 $34") and "¥1,000 1000 yuan" only touches
+ * the trailing "1000 yuan". Returns null when nothing applies, the result equals the input, or the
+ * number is glued to a letter (so "abc1000 dollars" is left alone).
  */
 export function detectCurrency(before: string, opts: CurrencyOptions): { start: number; text: string } | null {
-  // Case A — number then a spelled-out currency word: "1000 dollars" → "$1,000".
+  // Case A - number then a spelled-out currency word: "1000 dollars" -> "$1,000". `\s*` allows zero
+  // spaces, so "1000euro" works too.
   if (opts.wordToSymbol) {
-    const m = before.match(/(\d[\d., ]*?)\s*([A-Za-z]+)$/);
+    const m = before.match(/(\d[\d.,]*)\s*([A-Za-z]+)$/);
     if (m) {
       const symbol = WORD_TO_SYMBOL[m[2].toLowerCase()];
-      const numRaw = m[1].trim();
-      const start = before.length - m[0].length + (m[0].length - m[0].trimStart().length);
-      if (symbol && parseAmount(numRaw) && boundaryOk(before, start)) {
-        return { start, text: composeCurrency(symbol, formatAmount(numRaw, opts.style), opts.style) };
+      const start = before.length - m[0].length;
+      if (symbol && parseAmount(m[1]) && boundaryOk(before, start)) {
+        return { start, text: composeCurrency(symbol, formatAmount(m[1], opts.style)) };
       }
     }
   }
-  // Case B — an amount that already has a symbol, on either side: "$1000", "1000$", "$ 1000".
+  // Case B - an amount that already has a symbol, on either side: "$1000", "1000$", "$ 1000". The
+  // symbol is moved to its conventional side by composeCurrency.
   if (opts.format) {
     const sym = `(?:${FORMAT_SYMBOLS.map(escapeRe).join("|")})`;
-    let m = before.match(new RegExp(`(${sym})\\s?(\\d[\\d., ]*?)$`)); // symbol first
+    let m = before.match(new RegExp(`(${sym})\\s?(\\d[\\d.,]*)$`)); // symbol first
     if (m && parseAmount(m[2])) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
-        const text = composeCurrency(m[1], formatAmount(m[2].trim(), opts.style), opts.style);
+        const text = composeCurrency(m[1], formatAmount(m[2], opts.style));
         return text === before.slice(start) ? null : { start, text };
       }
     }
-    m = before.match(new RegExp(`(\\d[\\d., ]*?)\\s?(${sym})$`)); // symbol last
+    m = before.match(new RegExp(`(\\d[\\d.,]*)\\s?(${sym})$`)); // symbol last
     if (m && parseAmount(m[1])) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
-        const text = composeCurrency(m[2], formatAmount(m[1].trim(), opts.style), opts.style);
+        const text = composeCurrency(m[2], formatAmount(m[1], opts.style));
         return text === before.slice(start) ? null : { start, text };
       }
     }

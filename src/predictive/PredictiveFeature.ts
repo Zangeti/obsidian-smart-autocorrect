@@ -5,7 +5,7 @@
  */
 import { Component, debounce, MarkdownRenderer, MarkdownView, Menu, Notice, Plugin, TFile, type SettingDefinitionItem } from "obsidian";
 import type { Editor, EditorPosition, MarkdownFileInfo } from "obsidian";
-import { EditorView } from "@codemirror/view";
+import type { EditorView } from "@codemirror/view";
 import { pathExcluded, termFreq, matchCase } from "./engine/index";
 import { PredictiveEngineController } from "./PredictiveEngineController";
 import { LinkIndex } from "./LinkIndex";
@@ -67,8 +67,6 @@ export class PredictiveFeature {
   private tagDirty = new Set<string>();
   private flushTagSync: () => void;
   private reconcileDict: () => void;
-  /** Debounced reseed of the within-document cache from the live editor (drift guard, see ctor). */
-  private reseedCache: () => void;
 
   /** Gamification: keystrokes-saved total, daily streak, milestones. */
   engagement: EngagementStore;
@@ -116,14 +114,6 @@ export class PredictiveFeature {
     // once the corpus has absorbed the edit. The only wait left is the corpus's own flush, which
     // is there because re-counting a file costs real work - not because pruning does.
     this.reconcileDict = debounce(() => void this.reconcileDictionary(), 0, false);
-    // Reseed the within-document cache straight from the editor a beat after you stop typing. The
-    // cache is the only session state that is NOT persisted, so it is the one thing a plugin reload
-    // resets while the text stays the same - which is exactly the profile of the "odd suggestion
-    // after a while, gone after reloading" drift. It grows via observe() on every accept, so an odd
-    // word carried in an accepted phrase can linger and, because a rare word's boost is large, take
-    // over the menu. Tying the reseed to the live buffer (not to Obsidian's save-driven modify
-    // event) means the cache can never drift more than ~1s from what is actually on screen.
-    this.reseedCache = debounce(() => this.seedActiveDocument(), 1000, false);
   }
 
   /** Reconcile each dirty file's frontmatter tags: with the #tags in its body. */
@@ -592,14 +582,6 @@ export class PredictiveFeature {
       (word, saved) => this.onAccepted(word, saved),
     );
     this.plugin.registerEditorSuggest(this.suggest);
-
-    // Keep the within-document cache in step with the live editor (drift guard). Fires per
-    // keystroke but only arms a debounce, so the actual reseed happens ~1s after you pause.
-    this.plugin.registerEditorExtension(
-      EditorView.updateListener.of((u) => {
-        if (u.docChanged) this.reseedCache();
-      }),
-    );
 
     // Obsidian-native tag autocomplete on `#`, note-aware and niche-biased.
     const tagSuggest = new TagSuggest(this.plugin.app, this.linkIndex, this.engine, () => this.settings, (word, saved) => this.onAccepted(word, saved));

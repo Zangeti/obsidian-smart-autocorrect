@@ -346,8 +346,21 @@ export function buildPredictiveSettingGroups(
     );
 
   if (personalization) {
-    // Writing stats live right at the top, above every collapsible section, so the headline
-    // numbers are visible the moment settings open - no scrolling, no expanding a group.
+    row()
+      .setName("Getting started")
+      .setDesc("A quick tour: accepting a suggestion, how typos get fixed, undoing a correction you didn't want, and where to find your stats.")
+      .addButton((btn) => btn.setButtonText("Show me").onClick(() => personalization.onOpenTutorial()));
+    row()
+      .setName("Reset settings")
+      .setDesc("Put every option in this menu back to its default. Your personal dictionary and everything the plugin has learned about how you write are kept. Asks you to confirm first.")
+      .addButton((b) => b.setButtonText("Reset settings").onClick(() => personalization.onResetSettings()));
+    row()
+      .setName("Factory reset")
+      .setDesc("Wipe everything this plugin stores - settings, personalization, statistics and your personal dictionary. Can't be undone.")
+      .addButton((b) => b.setButtonText("Factory reset").setWarning().onClick(() => personalization.onFactoryReset()));
+
+    // Writing stats + support, right below the reset buttons. The headline number, the button to the
+    // full dashboard, and the buy-me-a-coffee block travel together as one section.
     const topStats = personalization.getStats();
     b.custom("Your writing stats", (el) => {
       const saved = el.createEl("p", { cls: "setting-item-description" });
@@ -365,19 +378,20 @@ export function buildPredictiveSettingGroups(
       .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
       .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
       .addButton((b) => b.setButtonText("Reset statistics").setWarning().onClick(() => personalization.onResetStats()));
-
-    row()
-      .setName("Getting started")
-      .setDesc("A quick tour: accepting a suggestion, how typos get fixed, undoing a correction you didn't want, and where to find your stats.")
-      .addButton((btn) => btn.setButtonText("Show me").onClick(() => personalization.onOpenTutorial()));
-    row()
-      .setName("Reset settings")
-      .setDesc("Put every option in this menu back to its default. Your personal dictionary and everything the plugin has learned about how you write are kept. Asks you to confirm first.")
-      .addButton((b) => b.setButtonText("Reset settings").onClick(() => personalization.onResetSettings()));
-    row()
-      .setName("Factory reset")
-      .setDesc("Wipe everything this plugin stores - settings, personalization, statistics and your personal dictionary. Can't be undone.")
-      .addButton((b) => b.setButtonText("Factory reset").setWarning().onClick(() => personalization.onFactoryReset()));
+    b.custom("Support, buy me a coffee", (el) => {
+      const support = el.createDiv({ cls: "smart-autocorrect-support" });
+      const supportText = support.createEl("p", { cls: "setting-item-description" });
+      supportText.appendText("Enjoying the plugin? You can ");
+      const link = supportText.createEl("a", { text: "buy me a coffee ☕", href: BMC_URL });
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener");
+      supportText.appendText(", or scan the code.");
+      const qr = support.createEl("img", { cls: "smart-autocorrect-qr" });
+      qr.src = BMC_QR_DATA_URI;
+      qr.alt = "Buy Me a Coffee QR code";
+      qr.width = 130;
+      qr.height = 130;
+    });
   }
 
   if (!settings.pluginEnabled) {
@@ -635,30 +649,6 @@ export function buildPredictiveSettingGroups(
     );
   toggle("Fix the wrong real word", 'Catches valid words used incorrectly in context ("form" → "from", "their" → "there").', "realWordCorrection");
   toggle("Fix missing spaces", 'Splits run-together words ("alot" → "a lot", "thebank" → "the bank").', "splitCorrection");
-  toggle(
-    "Tidy currency amounts",
-    'Groups the thousands and puts the symbol on the right side once you finish an amount that has a symbol ("$1000" → "$1,000").',
-    "currencyFormat",
-  );
-  toggle(
-    "Currency words to symbols",
-    'After a number, turns a currency word or code into its symbol ("1000 euros" → "€1,000", "50 USD" → "$50"). You have to type the number for it to convert.',
-    "currencyWordToSymbol",
-  );
-  row()
-    .setName("Thousands separator")
-    .setDesc("Which grouping to use in currency amounts. Comma is English-style ($1,000); period is European-style (1.000 €); none leaves the digits ungrouped.")
-    .addDropdown((d) =>
-      d
-        .addOption("comma", "Comma — $1,000")
-        .addOption("period", "Period — 1.000 €")
-        .addOption("none", "None — $1000")
-        .setValue(settings.currencyThousands)
-        .onChange((v) => {
-          settings.currencyThousands = v as PredictiveSettings["currencyThousands"];
-          commit();
-        }),
-    );
   toggle("Smarter context ranking", "Ranks words by how many contexts they appear in, not just raw frequency. Reins in over-eager rare words.", "useContinuation");
   toggle("Adapt to my typing", "Learns the particular key mistakes you tend to make, and corrects them better over time.", "adaptiveKeyboard");
   toggle("Rank by what I pick", "Reorders suggestions based on which ones you actually choose.", "learnedRanking");
@@ -747,6 +737,33 @@ export function buildPredictiveSettingGroups(
         settings.collapseDoubleSpace = v;
         commit();
       }),
+    );
+
+  // --- additional features -----------------------------------------------
+  b.group("Additional features", true);
+  toggle(
+    "Tidy currency amounts",
+    'Once you finish an amount that has a currency symbol, groups the thousands and moves the symbol to where that currency normally sits ("$1000" becomes "$1,000").',
+    "currencyFormat",
+  );
+  toggle(
+    "Currency words to symbols",
+    'After a number, turns a currency word or code into its symbol ("1000 euros" becomes "€1,000", "50 USD" becomes "$50"). You have to type the number for it to convert.',
+    "currencyWordToSymbol",
+  );
+  row()
+    .setName("Thousands separator")
+    .setDesc("Which grouping to use inside a currency amount.")
+    .addDropdown((d) =>
+      d
+        .addOption("comma", "$1,000 (comma)")
+        .addOption("period", "$1.000 (period)")
+        .addOption("none", "$1000 (none)")
+        .setValue(settings.currencyThousands)
+        .onChange((v) => {
+          settings.currencyThousands = v as PredictiveSettings["currencyThousands"];
+          commit();
+        }),
     );
 
   // --- markdown / performance --------------------------------------------
@@ -969,24 +986,8 @@ export function buildPredictiveSettingGroups(
   if (!personalization) return b.groups;
   b.group("Personalization", true);
   const stats = personalization.getStats();
-  // The headline keystrokes-saved figure and the "See your stats" button now live at the very
-  // top of the pane (above every collapsible section). This group keeps the deeper controls.
-
-  // Support / Buy me a coffee.
-  b.custom("Support, buy me a coffee", (el) => {
-    const support = el.createDiv({ cls: "smart-autocorrect-support" });
-    const supportText = support.createEl("p", { cls: "setting-item-description" });
-    supportText.appendText("Enjoying the plugin? You can ");
-    const link = supportText.createEl("a", { text: "buy me a coffee ☕", href: BMC_URL });
-    link.setAttribute("target", "_blank");
-    link.setAttribute("rel", "noopener");
-    supportText.appendText(", or scan the code.");
-    const qr = support.createEl("img", { cls: "smart-autocorrect-qr" });
-    qr.src = BMC_QR_DATA_URI;
-    qr.alt = "Buy Me a Coffee QR code";
-    qr.width = 130;
-    qr.height = 130;
-  });
+  // The headline stats, the "See your stats" button and the support block live below the reset
+  // buttons above. This group keeps the deeper learning controls.
   b.note(
     settings.personalizationEnabled
       ? `So far: ${stats.accepts} suggestions accepted, ${stats.corrections} typos fixed, ${stats.reverts} undone, and ${stats.learnListSize} of your words on the don't-touch list. All of this lives in personalization.json in the plugin folder, travels with your vault, and stays out of your notes.`

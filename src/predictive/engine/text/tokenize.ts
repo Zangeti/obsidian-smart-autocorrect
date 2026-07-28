@@ -118,6 +118,36 @@ export function joinPhraseSurface(words: string[]): string {
   return out;
 }
 
+/** Small function words that stay lowercase inside a proper-noun phrase ("the White House",
+ *  "bank of America"), so harmonizeProperCase never capitalises them. */
+const PHRASE_STOPWORDS = new Set([
+  "the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "at", "by", "with", "from", "as",
+]);
+
+/**
+ * Make a phrase's capitalisation self-consistent: if a word is capitalised, the content word right
+ * before it should be too. The case head sometimes lower-cases only PART of a proper noun in
+ * context, so a suggestion comes out as "federal Reserve" or "middle East"; this repairs it to
+ * "Federal Reserve" / "Middle East" without touching articles/prepositions ("the White House"
+ * stays). Conservative: it only ever propagates a capital LEFTWARD across immediately-adjacent
+ * content words, so an ordinary lowercased word next to a mid-sentence proper noun is unaffected
+ * unless it directly precedes it.
+ */
+export function harmonizeProperCase(surface: string): string {
+  const parts = surface.split(" ");
+  if (parts.length < 2) return surface;
+  const isCap = (w: string) => /^[A-Z][a-z]/.test(w);
+  const isLowerContent = (w: string) => /^[a-z]+$/.test(w) && !PHRASE_STOPWORDS.has(w);
+  let changed = false;
+  for (let i = parts.length - 1; i >= 1; i--) {
+    if (isCap(parts[i]) && isLowerContent(parts[i - 1])) {
+      parts[i - 1] = parts[i - 1][0].toUpperCase() + parts[i - 1].slice(1);
+      changed = true;
+    }
+  }
+  return changed ? parts.join(" ") : surface;
+}
+
 /** Split raw text into the CASE-PRESERVING word+punctuation tokens the LSTM wants. */
 export function tokenizeWordsCased(text: string): string[] {
   // Smart quotes -> straight, so "don’t" tokenises as the trained "don't" rather

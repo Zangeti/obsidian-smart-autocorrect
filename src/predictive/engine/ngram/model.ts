@@ -314,6 +314,10 @@ export class MixtureLanguageModel implements LanguageModel {
  * Wraps any base model and mixes a within-document unigram cache with weight gamma.
  */
 export class CacheLanguageModel implements LanguageModel {
+  /** Ceiling on the positive within-document boost, in nats. ~1 nat (a factor of e) is enough for
+   *  genuine topical adaptation; beyond it, only a pathologically rare word would qualify. */
+  static readonly MAX_BOOST = 1.0;
+
   private base: LanguageModel;
   private gamma: number;
   private minCount: number;
@@ -400,7 +404,14 @@ export class CacheLanguageModel implements LanguageModel {
     const pc = this.pCache(word);
     if (pc <= 0) return b; // not topical here: the base model stands unchanged
     const unigram = this.base.logProb(word, []);
-    return Math.min(0, b + this.gamma * (Math.log(pc) - unigram));
+    // Unigram rescaling. The log-ratio (log pc − log unigram) is UNBOUNDED for a rare word: its
+    // background probability is tiny, so mentioning it a couple of times yields an enormous ratio
+    // and an outsized boost. Capping the positive boost keeps topical adaptation for ordinary words
+    // while making it impossible for a rare in-note term to be lifted into the menu on the strength
+    // of the cache alone (the "why is it suggesting Tuberculosis" failure). Demotion is left
+    // uncapped - a word rarer here than in general should still be pushed down.
+    const boost = this.gamma * (Math.log(pc) - unigram);
+    return Math.min(0, b + Math.min(boost, CacheLanguageModel.MAX_BOOST));
   }
 
   predict(context: string[], k: number): Scored[] {

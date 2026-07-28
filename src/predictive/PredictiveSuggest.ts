@@ -27,6 +27,9 @@ import {
   endsWithTightPunct,
   doubleSpaceStart,
   suggestionCase,
+  detectCurrency,
+  currencyStyleFor,
+  isCurrencyWordPrefix,
   type SuggestionCase,
 } from "./engine/index";
 import { contextWords } from "./context";
@@ -222,8 +225,13 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     const startCh = cursor.ch - query.length;
 
     // A letter run glued to a number is an ordinal / unit suffix ("19th", "3rd", "5km"), not a
-    // word being typed - don't offer completions of it (we'd suggest "the" for the "th").
-    if (query.length > 0 && startCh > 0 && /\d/.test(line[startCh - 1])) return null;
+    // word being typed - don't offer completions of it (we'd suggest "the" for the "th"). EXCEPTION:
+    // a currency word glued to a number ("1000eu…") is exactly what we DO want to offer, so let it
+    // through when the run is the start of a currency word and the currency feature is on.
+    if (query.length > 0 && startCh > 0 && /\d/.test(line[startCh - 1])) {
+      const currencyOn = this.settings.currencyWordToSymbol || this.settings.currencyFormat;
+      if (!(currencyOn && isCurrencyWordPrefix(query))) return null;
+    }
 
     // Just accepted a suggestion and the caret has not moved: that word is DONE. Ask
     // for the next word instead of re-completing what was just inserted - otherwise
@@ -235,8 +243,10 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     this.acceptedAt = null; // the caret moved or text changed: back to normal completion
 
     if (query.length === 0) {
-      // Next-word / phrase prediction only right after "word ".
-      if (!/\w\s$/.test(before)) return null;
+      // Next-word / phrase prediction right after a finished token + space. Besides a word char,
+      // allow a currency symbol so "2$ " (or "€5 ") still offers a following word - the "$" is not a
+      // \w, which is why no suggestion appeared there before.
+      if (!/[\w$€£¥₹₽₩₪฿₺₴₦₱₫₿%)]\s$/.test(before)) return null;
     } else if (query.length < this.settings.minChars) {
       // Word being typed is shorter than the trigger threshold: wait for more letters.
       return null;
@@ -263,12 +273,35 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
       items = []; // a worker hiccup shows no popup rather than throwing at the user
     }
     const merged = this.withPhrase(context, items);
-    const out = this.cased(before, context.query, this.withDictionary(context.query, merged));
+    let out = this.cased(before, context.query, this.withDictionary(context.query, merged));
     this.acceptBusy = false; // a fresh list is ready - the accept key may fire again
     // A candidate that saves no keystrokes (e.g. a word already typed out in full) is
     // dropped upstream by the expected-keystrokes-saved ranking in EngineCore.getSuggestions
     // - its saving is <= 0 - so no display-side exact-match filter is needed here.
+
+    // If the text up to the caret ends in a currency expression ("1000 dollars", "1000euro",
+    // "$1000"), offer the conversion at the TOP with the symbol shown. Accepting it (Tab) applies
+    // the whole transform immediately, rather than waiting for the space-triggered autocorrect.
+    const currency = this.currencyItem(before + context.query);
+    if (currency) out = [currency, ...out.filter((i) => i.insert !== currency.insert)];
     return out;
+  }
+
+  /**
+   * A currency-conversion suggestion for the text up to the caret, or null. `lineToCaret` is the
+   * whole line up to the cursor; the conversion replaces from its `replaceFromCh` (the start of the
+   * number) to the caret. The badge is the target symbol, so the row makes clear what will happen.
+   */
+  private currencyItem(lineToCaret: string): SuggestItem | null {
+    if (!this.settings.currencyFormat && !this.settings.currencyWordToSymbol) return null;
+    const cur = detectCurrency(lineToCaret, {
+      format: this.settings.currencyFormat,
+      wordToSymbol: this.settings.currencyWordToSymbol,
+      style: currencyStyleFor(this.settings.currencyThousands),
+    });
+    if (!cur) return null;
+    const badge = cur.text.replace(/[\d.,\s]/g, "") || "¤"; // the symbol, stripped of the number
+    return { insert: cur.text, display: cur.text, kind: "currency", score: Infinity, replaceFromCh: cur.start, badge };
   }
 
   /**
@@ -402,6 +435,8 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
       el.createSpan({ text: "⏎ phrase", cls: "predictive-kind" });
     } else if (value.kind === "dictionary") {
       el.createSpan({ text: "📖 yours", cls: "predictive-kind" });
+    } else if (value.kind === "currency") {
+      el.createSpan({ text: `💱 ${value.badge ?? ""}`, cls: "predictive-kind" });
     }
   }
 
@@ -423,6 +458,18 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
       // boundary sees no token and correctly does nothing.
       this.close();
       this.insertNewline(ctx.editor);
+      return;
+    }
+    // A currency conversion replaces the WHOLE amount span (from the start of the number to the
+    // caret) with the formatted, symbol-attached result - not just the query word.
+    if (value.kind === "currency" && value.replaceFromCh !== undefined) {
+      const from: EditorPosition = { line: ctx.start.line, ch: value.replaceFromCh };
+      ctx.editor.replaceRange(value.insert, from, ctx.end);
+      const end: EditorPosition = { line: from.line, ch: from.ch + value.insert.length };
+      ctx.editor.setCursor(end);
+      this.acceptedAt = end;
+      const prevLen = ctx.editor.posToOffset(ctx.end) - ctx.editor.posToOffset(from);
+      this.onAccept(value.insert, Math.max(0, value.insert.length - prevLen));
       return;
     }
     // A dictionary entry is inserted EXACTLY as the user stored it. Running it

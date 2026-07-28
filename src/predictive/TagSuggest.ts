@@ -25,6 +25,13 @@ interface TagItem {
 /** `#` then optional tag characters, where the `#` starts a word (not mid-word, not `##`). */
 const TRIGGER = /(^|\s)#([\p{L}\p{N}/_-]*)$/u;
 
+/** Most existing (already-in-vault) tags to show before any new suggestions. */
+const MAX_EXISTING = 5;
+/** New-tag suggestions always get at least this many slots, even when many existing tags matched. */
+const MIN_NEW = 3;
+/** Target total rows in the popup. */
+const TOTAL_TAGS = 8;
+
 /**
  * A tag Obsidian will actually accept: letters, digits, `_`, `-`, `/` only, and at least one
  * character that is not a digit (a purely numeric tag is not a tag).
@@ -124,21 +131,31 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     await this.ensureRarities([...wordsNeeded]);
     const rarity = (w: string) => this.rarityCache.get(w) ?? 0.5;
 
-    const items: TagItem[] = [];
-    for (const { tag, count, leaf } of existing) {
+    // Existing vault tags that still match what you've typed always come FIRST (keeping your
+    // taxonomy consistent), capped so a note with dozens of relevant tags still leaves room for a
+    // few fresh suggestions below.
+    const existingItems: TagItem[] = existing.map(({ tag, count, leaf }) => {
       const hits = (tf.get(tag) ?? 0) + (tf.get(leaf) ?? 0);
       const match = q ? (tag.startsWith(q) || leaf.startsWith(q) ? 2 : 1) : 1;
-      // Relevance to the note × descriptiveness × how established the tag is.
       const score = match * (0.5 + hits) * rarity(leaf) * Math.log(2 + count);
-      items.push({ tag, count, isNew: false, score });
-    }
+      return { tag, count, isNew: false, score };
+    });
+    existingItems.sort((a, b) => b.score - a.score);
+    const existingTop = existingItems.slice(0, MAX_EXISTING);
+
+    // New tags drawn from the note's own distinctive words, ranked below the existing ones and
+    // always given a few slots even when many existing tags matched.
+    const freshItems: TagItem[] = [];
     for (const w of fresh) {
       const r = rarity(w);
       if (r < 0.4) continue; // skip generic words as brand-new tags ("people", "thing")
-      const score = (tf.get(w) ?? 0) * r * (q && w.startsWith(q) ? 1.4 : 1) * 0.8; // slightly below existing
-      items.push({ tag: w, count: 0, isNew: true, score });
+      const score = (tf.get(w) ?? 0) * r * (q && w.startsWith(q) ? 1.4 : 1) * 0.8;
+      freshItems.push({ tag: w, count: 0, isNew: true, score });
     }
-    return items.sort((a, b) => b.score - a.score).slice(0, 8);
+    freshItems.sort((a, b) => b.score - a.score);
+    const freshTop = freshItems.slice(0, Math.max(MIN_NEW, TOTAL_TAGS - existingTop.length));
+
+    return [...existingTop, ...freshTop].slice(0, TOTAL_TAGS + MIN_NEW);
   }
 
   renderSuggestion(item: TagItem, el: HTMLElement): void {

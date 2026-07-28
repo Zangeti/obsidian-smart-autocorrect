@@ -25,6 +25,7 @@ import {
   isDoubledWord,
   detectCurrency,
   currencyStyleFor,
+  fixNumericSuffix,
   type SentenceCaseConfig,
 } from "./engine/index";
 import { contextWords } from "./context";
@@ -294,6 +295,28 @@ export class AutocorrectController {
     return true;
   }
 
+  /**
+   * Fix a wrong ordinal suffix or a decade apostrophe just before the caret ("21th" → "21st",
+   * "1930's" → "1930s"). Gated on the autocorrect setting; one undo step, revertible. Returns true
+   * when it acted.
+   */
+  private tryNumericSuffix(editor: Editor, cursor: EditorPosition, uptoToken: string): boolean {
+    if (!this.settings.autocorrectOnSpace) return false;
+    const fix = fixNumericSuffix(uptoToken);
+    if (!fix) return false;
+    const original = uptoToken.slice(fix.start);
+    if (editor.getLine(cursor.line).slice(fix.start, uptoToken.length) !== original) return false;
+    this.applyCorrection(
+      editor,
+      { line: cursor.line, ch: fix.start },
+      { line: cursor.line, ch: uptoToken.length },
+      fix.text,
+    );
+    this.trackCorrection(original, fix.text);
+    this.justCorrected = true;
+    return true;
+  }
+
   private async handleBoundary(editor: Editor, at: EditorPosition | null = null): Promise<void> {
     if (!this.settings.pluginEnabled) return; // master switch off: no autocorrect / capitalisation
     const cursor = at ?? editor.getCursor();
@@ -315,6 +338,9 @@ export class AutocorrectController {
     // on an amount that has no letter token at all ("$1000") or replace a number+word span wholesale
     // ("1000 dollars" → "$1,000"), so it must come before the single-word path below.
     if (this.tryCurrency(editor, cursor, uptoToken)) return;
+    // Numeric-suffix tidying: a wrong ordinal ("21th" → "21st") or a decade apostrophe ("1930's" →
+    // "1930s"). Also number-glued, so it must run before the letter-token logic and its ordinal guard.
+    if (this.tryNumericSuffix(editor, cursor, uptoToken)) return;
 
     const tokenMatch = uptoToken.match(/([A-Za-z][A-Za-z'-]*)$/);
     if (!tokenMatch) return;

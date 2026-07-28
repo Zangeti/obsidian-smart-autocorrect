@@ -128,6 +128,12 @@ function inflectionClass(w: string): "ing" | "ed" | "s" | "" {
  * either the query or the candidate is near the axis origin), so it removes the clear antonyms
  * without a hand-maintained blocklist and without hurting weakly-polarised words.
  */
+/** Sensitivity of "suggest alternatives": a candidate must be at least this cosine-similar to the
+ *  query to be offered at all, and within this much of the best candidate's score. Together they turn
+ *  a fixed full menu into a short, high-quality list (often fewer than the max, sometimes empty). */
+const ALT_MIN_COSINE = 0.42;
+const ALT_SCORE_DROP = 0.22;
+
 const ANTONYM_SEEDS: [string, string][] = [
   // magnitude / physical
   ["strong", "weak"], ["big", "small"], ["hot", "cold"], ["fast", "slow"], ["high", "low"],
@@ -634,7 +640,13 @@ export class LstmLanguageModel implements LanguageModel {
       return { w: c.w, score, cos: c.cos };
     });
     scored.sort((a, b) => b.score - a.score || b.cos - a.cos);
-    return scored.slice(0, k).map((c) => c.w);
+    // Sensitivity gate: only keep genuinely close neighbours. A full menu of weak "alternatives"
+    // (things that merely appear in similar contexts) is worse than a short list of real synonyms, so
+    // require a solid cosine to the query AND drop anything far below the best candidate. The count
+    // returned is therefore variable - few or none for a word with no close synonyms.
+    const best = scored.length ? scored[0].score : 0;
+    const kept = scored.filter((c) => c.cos >= ALT_MIN_COSINE && c.score >= best - ALT_SCORE_DROP);
+    return kept.slice(0, k).map((c) => c.w);
   }
 
   /** Cosine projection of vocab row `rowId` onto a unit direction (how far along the axis it sits). */

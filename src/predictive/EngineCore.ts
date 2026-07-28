@@ -28,6 +28,7 @@ import {
   decideRespace,
   tokenizeWords,
   joinPhraseSurface,
+  harmonizeProperCase,
   isProfane,
   evaluate,
   LstmLanguageModel,
@@ -53,9 +54,15 @@ export interface SuggestItem {
   insert: string;
   /** text shown in the popup. */
   display: string;
-  /** "dictionary" = a user's personal-dictionary word: inserted VERBATIM, never re-cased. */
-  kind: "word" | "correction" | "phrase" | "dictionary";
+  /** "dictionary" = a user's personal-dictionary word: inserted VERBATIM, never re-cased.
+   *  "currency" = a currency conversion built on the main thread (see PredictiveSuggest). */
+  kind: "word" | "correction" | "phrase" | "dictionary" | "currency";
   score: number;
+  /** Currency only: replace from this absolute line offset (the start of the number) to the caret,
+   *  so the whole "1000 dollars" span becomes "$1,000". */
+  replaceFromCh?: number;
+  /** Currency only: the symbol to show as a badge in the row (e.g. "$"). */
+  badge?: string;
 }
 
 /** A vault file's text, as handed over from the main thread. */
@@ -594,9 +601,10 @@ export class EngineCore {
       // next-word menu after the space.
       if (includePhrases && maxWords >= 2 && i < BEAM && typed.length < s.word.length) {
         for (const p of this.lstm.phraseCandidates(context, s.word, maxWords, BEAM))
-          // joinPhraseSurface re-attaches split contraction/possessive clitics with an
-          // apostrophe ("Roosevelt","s" -> "Roosevelt's"), which the plain space-join mangled.
-          consider(joinPhraseSurface(p.words), "phrase", pSeed * Math.exp(p.extLogProb));
+          // joinPhraseSurface re-attaches split contraction/possessive clitics with an apostrophe
+          // ("Roosevelt","s" -> "Roosevelt's"); harmonizeProperCase repairs a half-cased proper noun
+          // the case head produced ("federal Reserve" -> "Federal Reserve").
+          consider(harmonizeProperCase(joinPhraseSurface(p.words)), "phrase", pSeed * Math.exp(p.extLogProb));
       }
     });
 
