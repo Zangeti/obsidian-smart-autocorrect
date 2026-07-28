@@ -21,7 +21,7 @@ It runs completely offline, so your notes stay private and never leave your devi
 - **Contextual suggestions.** It reads the sentence you're writing and your other notes.
 - **100% local.** Everything runs on-device. No cloud, no telemetry, no account.
 
-## ✨ When you need it
+## ✨ Additional features
 
 - **Suggest alternatives.** Right-click any word for more eloquent wording (good becomes *substantial*, help becomes *facilitate*, big becomes *immense*).
 - **Smart capitalisation.** Sentence starts, names and places, and abbreviations like `e.g.` and `U.S.` are handled for you.
