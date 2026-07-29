@@ -86,6 +86,10 @@ export interface PredictiveSettings {
    * "GmbH" and "gmbh" are therefore different entries.
    */
   userDictionary: string[];
+  /** Words the user added EXPLICITLY (right-click or the dictionary editor), as opposed to ones
+   *  auto-learned from undoing corrections. A marker subset of userDictionary, for the editor's
+   *  "added by you" vs "learned automatically" split. */
+  userDictionaryUserAdded: string[];
   /** also offer dictionary words as completions, not just protect them. */
   suggestUserDictionary: boolean;
   /** when you undo a correction, add that word to the personal dictionary so it is never
@@ -170,6 +174,9 @@ export interface PredictiveSettings {
    *  topic fingerprint with keyword overlap. A link icon appears only where a close match
    *  exists; clicking it offers the feasible targets. Never inserts anything on its own. */
   suggestLinks: boolean;
+  /** EXPERIMENTAL: faintly underline text in the note that exactly matches an existing note
+   *  title/alias, so you can click it to link. Independent of the end-of-section related links. */
+  underlineLinks: boolean;
   /** How eager related-link suggestions are, 1 (only very close matches) to 5 (looser). */
   relatedSensitivity: number;
   /** Minimum words in a block before it can get a link icon (keeps stray half-sentences
@@ -256,6 +263,7 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   removeDoubledWords: true,
   extraAbbreviations: [],
   userDictionary: [],
+  userDictionaryUserAdded: [],
   suggestUserDictionary: true,
   undoAddsToDictionary: true,
   learnAbbreviationsOnRevert: true,
@@ -282,6 +290,7 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   excludedFolders: [],
   minChars: 1,
   suggestLinks: true,
+  underlineLinks: true,
   relatedSensitivity: 3,
   minLinkWords: 12,
   suggestTagsOnHash: true,
@@ -543,25 +552,60 @@ export function buildPredictiveSettingGroups(
         }),
     );
 
-  row()
-    .setName("Personal dictionary")
-    .setDesc(
-      'Comma-separated words that are always correct as written, so they are never autocorrected or re-cased. ' +
-      'Case-sensitive, so odd spellings the model cannot guess ("NixOS", "kubeCTL", "myVar") are pinned exactly as you type them. ' +
-      '"GmbH" and "gmbh" are separate entries.',
-    )
-    .addTextArea((t) =>
-      t
-        .setValue(settings.userDictionary.join(", "))
-        .onChange((v) => {
-          // Case and inner spaces preserved; only the separators are trimmed.
-          settings.userDictionary = v
-            .split(",")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-          commit();
-        }),
-    );
+  b.custom("Personal dictionary", (el) => {
+    el.createEl("p", {
+      cls: "setting-item-description",
+      text:
+        'Words that are always correct as written, so they are never autocorrected or re-cased. ' +
+        'Case-sensitive, so odd spellings ("NixOS", "kubeCTL") are pinned exactly. Words you add ' +
+        "yourself are listed first; the rest were learned automatically when you undid a correction.",
+    });
+
+    const userAdded = new Set(settings.userDictionaryUserAdded ?? []);
+    const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    const added = settings.userDictionary.filter((w) => userAdded.has(w)).sort(byName);
+    const learned = settings.userDictionary.filter((w) => !userAdded.has(w)).sort(byName);
+
+    const removeWord = (w: string) => {
+      settings.userDictionary = settings.userDictionary.filter((x) => x !== w);
+      settings.userDictionaryUserAdded = (settings.userDictionaryUserAdded ?? []).filter((x) => x !== w);
+      commit();
+      redraw?.();
+    };
+    const addWord = (raw: string) => {
+      const w = raw.trim();
+      if (!w || settings.userDictionary.includes(w)) return;
+      settings.userDictionary = [...settings.userDictionary, w];
+      settings.userDictionaryUserAdded = [...(settings.userDictionaryUserAdded ?? []), w];
+      commit();
+      redraw?.();
+    };
+
+    // Add box.
+    const addRow = el.createDiv({ cls: "smart-autocorrect-dict-add" });
+    const input = addRow.createEl("input", { type: "text", attr: { placeholder: "Add a word…", spellcheck: "false" } });
+    const addBtn = addRow.createEl("button", { text: "Add" });
+    addBtn.onclick = () => { addWord(input.value); input.value = ""; input.focus(); };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addWord(input.value); input.value = ""; }
+    });
+
+    const section = (title: string, words: string[]) => {
+      if (words.length === 0) return;
+      el.createEl("div", { cls: "smart-autocorrect-dict-heading", text: `${title} (${words.length})` });
+      const list = el.createDiv({ cls: "smart-autocorrect-dict-list" });
+      for (const w of words) {
+        const chip = list.createSpan({ cls: "smart-autocorrect-dict-chip" });
+        chip.createSpan({ text: w });
+        const x = chip.createSpan({ cls: "smart-autocorrect-dict-remove", text: "✕", attr: { "aria-label": `Remove “${w}”` } });
+        x.onclick = () => removeWord(w);
+      }
+    };
+    section("Added by you", added);
+    section("Learned automatically", learned);
+    if (added.length === 0 && learned.length === 0)
+      el.createEl("p", { cls: "setting-item-description", text: "No words yet — add one above, or right-click a word in a note." });
+  });
 
   row()
     .setName("Suggest personal dictionary words")
@@ -838,6 +882,11 @@ export function buildPredictiveSettingGroups(
           redraw?.(); // the sensitivity/length sliders below only matter for tooltips
         }),
     );
+  toggle(
+    "Underline linkable text (experimental)",
+    "Faintly underline any text in a note that matches an existing note's title or alias, so you can click it to insert a link. Independent of the tooltips above. Hover to preview, click to link or dismiss.",
+    "underlineLinks",
+  );
   if (settings.suggestLinks) {
     row()
       .setName("Related-link sensitivity")

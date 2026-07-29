@@ -293,6 +293,7 @@ export class PredictiveFeature {
     const fresh = JSON.parse(JSON.stringify(DEFAULT_PREDICTIVE_SETTINGS)) as PredictiveSettings;
     // Preserve the user's own words and custom abbreviations - those are personal, not options.
     fresh.userDictionary = this.settings.userDictionary;
+    fresh.userDictionaryUserAdded = this.settings.userDictionaryUserAdded;
     fresh.extraAbbreviations = this.settings.extraAbbreviations;
     Object.assign(this.settings, fresh);
     this.onSettingsChanged();
@@ -372,6 +373,8 @@ export class PredictiveFeature {
       /* engine unavailable: add best-effort */
     }
     this.settings.userDictionary = [...this.settings.userDictionary, w];
+    // Explicit add: mark it so the dictionary editor lists it under "added by you".
+    this.settings.userDictionaryUserAdded = [...(this.settings.userDictionaryUserAdded ?? []), w];
     this.onSettingsChanged();
     this.onPersistSettings?.();
     new Notice(`Added “${w}” to your personal dictionary`);
@@ -486,6 +489,8 @@ export class PredictiveFeature {
     const removedKnown = dict.filter((_, i) => recognised(i));
     const removedVault = dict.filter((_, i) => !recognised(i) && goneFromVault(i));
     this.settings.userDictionary = keep;
+    const keepSet = new Set(keep);
+    this.settings.userDictionaryUserAdded = (this.settings.userDictionaryUserAdded ?? []).filter((w) => keepSet.has(w));
     this.onSettingsChanged();
     this.onPersistSettings?.();
     const parts: string[] = [];
@@ -501,6 +506,7 @@ export class PredictiveFeature {
     const w = word.trim();
     if (!this.settings.userDictionary.includes(w)) return;
     this.settings.userDictionary = this.settings.userDictionary.filter((x) => x !== w);
+    this.settings.userDictionaryUserAdded = (this.settings.userDictionaryUserAdded ?? []).filter((x) => x !== w);
     this.onSettingsChanged();
     this.onPersistSettings?.();
     new Notice(`Removed “${w}” from your personal dictionary`);

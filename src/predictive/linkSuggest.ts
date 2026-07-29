@@ -56,7 +56,7 @@ export function linkSuggestExtension(
       }
       build(v: EditorView): DecorationSet {
         const s = getSettings();
-        if (!s.suggestLinks || isExcluded()) return Decoration.none;
+        if (!s.underlineLinks || isExcluded()) return Decoration.none;
         const exclude = app.workspace.getActiveFile()?.basename;
         // Collect spans across all visible ranges, then add in document order (RangeSetBuilder
         // requires ascending positions).
@@ -133,9 +133,13 @@ export function linkSuggestExtension(
     ".smart-autocorrect-linkable": {
       textDecoration: "underline",
       textDecorationStyle: "dotted",
-      textDecorationColor: "var(--text-accent)",
+      // Faint by default - a quiet hint, not a highlight; brightens on hover.
+      textDecorationColor: "color-mix(in srgb, var(--text-accent) 35%, transparent)",
       textUnderlineOffset: "3px",
       cursor: "pointer",
+    },
+    ".smart-autocorrect-linkable:hover": {
+      textDecorationColor: "var(--text-accent)",
     },
   });
 

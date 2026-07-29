@@ -1,4 +1,13 @@
 /* Smart Autocorrect styles. */
+/* Personal dictionary editor. */
+.smart-autocorrect-dict-add { display: flex; gap: 0.5em; margin: 0.6em 0; }
+.smart-autocorrect-dict-add input { flex: 1; }
+.smart-autocorrect-dict-heading { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 0.8em 0 0.4em; }
+.smart-autocorrect-dict-list { display: flex; flex-wrap: wrap; gap: 0.4em; }
+.smart-autocorrect-dict-chip { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.15em 0.5em; border-radius: 0.8em; background: var(--background-modifier-hover); font-size: 0.9em; }
+.smart-autocorrect-dict-remove { cursor: pointer; opacity: 0.5; font-size: 0.85em; }
+.smart-autocorrect-dict-remove:hover { opacity: 1; color: var(--text-error); }
+
 .predictive-suggestion { display: flex; justify-content: space-between; gap: 1em; align-items: baseline; }
 .predictive-suggestion .predictive-left { display: flex; align-items: baseline; gap: 0.45em; min-width: 0; }
 .predictive-suggestion .predictive-mark { color: var(--text-accent); opacity: 0.7; font-size: 0.75em; }
