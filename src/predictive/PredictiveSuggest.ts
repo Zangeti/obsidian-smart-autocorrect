@@ -27,7 +27,7 @@ import {
   endsWithTightPunct,
   doubleSpaceStart,
   suggestionCase,
-  detectCurrency,
+  currencyProposal,
   currencyStyleFor,
   isCurrencyWordPrefix,
   type SuggestionCase,
@@ -220,6 +220,15 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
 
     const line = editor.getLine(cursor.line);
     const before = line.slice(0, cursor.ch);
+
+    // Currency amount up to the caret ("$10000", "1000$", "1000 dollars", "1000eu…"): trigger a
+    // popup even when there is no ordinary word being typed, so the "format currency" action can be
+    // offered (and accepted with Tab) as it is typed.
+    if (this.settings.currencyFormat || this.settings.currencyWordToSymbol) {
+      const cur = currencyProposal(before, this.currencyOpts());
+      if (cur) return { start: { line: cursor.line, ch: cur.start }, end: cursor, query: before.slice(cur.start) };
+    }
+
     const m = before.match(/([A-Za-z][A-Za-z'-]*)$/);
     const query = m ? m[1] : "";
     const startCh = cursor.ch - query.length;
@@ -262,6 +271,16 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     const before = context.editor
       .getLine(context.start.line)
       .slice(0, context.start.ch);
+
+    // If the text up to the caret is a currency amount, show ONLY the "format currency" action.
+    // Showing the "dollars"/"euro" word completion beside it is misleading - accepting that word
+    // just triggers the same conversion - so it is suppressed here.
+    const currency = this.currencyItem(before + context.query);
+    if (currency) {
+      this.acceptBusy = false;
+      return [currency];
+    }
+
     const ctxWords = contextWords(before, this.settings.extraAbbreviations);
     let items: SuggestItem[] = [];
     try {
@@ -273,35 +292,34 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
       items = []; // a worker hiccup shows no popup rather than throwing at the user
     }
     const merged = this.withPhrase(context, items);
-    let out = this.cased(before, context.query, this.withDictionary(context.query, merged));
+    const out = this.cased(before, context.query, this.withDictionary(context.query, merged));
     this.acceptBusy = false; // a fresh list is ready - the accept key may fire again
     // A candidate that saves no keystrokes (e.g. a word already typed out in full) is
     // dropped upstream by the expected-keystrokes-saved ranking in EngineCore.getSuggestions
     // - its saving is <= 0 - so no display-side exact-match filter is needed here.
-
-    // If the text up to the caret ends in a currency expression ("1000 dollars", "1000euro",
-    // "$1000"), offer the conversion at the TOP with the symbol shown. Accepting it (Tab) applies
-    // the whole transform immediately, rather than waiting for the space-triggered autocorrect.
-    const currency = this.currencyItem(before + context.query);
-    if (currency) out = [currency, ...out.filter((i) => i.insert !== currency.insert)];
     return out;
   }
 
-  /**
-   * A currency-conversion suggestion for the text up to the caret, or null. `lineToCaret` is the
-   * whole line up to the cursor; the conversion replaces from its `replaceFromCh` (the start of the
-   * number) to the caret. The badge is the target symbol, so the row makes clear what will happen.
-   */
-  private currencyItem(lineToCaret: string): SuggestItem | null {
-    if (!this.settings.currencyFormat && !this.settings.currencyWordToSymbol) return null;
-    const cur = detectCurrency(lineToCaret, {
+  /** Currency detection options from the current settings. */
+  private currencyOpts() {
+    return {
       format: this.settings.currencyFormat,
       wordToSymbol: this.settings.currencyWordToSymbol,
       style: currencyStyleFor(this.settings.currencyThousands),
-    });
+    };
+  }
+
+  /**
+   * A "format currency" suggestion for the text up to the caret, or null. `lineToCaret` is the whole
+   * line up to the cursor; the conversion replaces from `replaceFromCh` (the start of the number) to
+   * the caret. Shown as a single action labelled "Format currency" with the target symbol as a
+   * badge, so it never masquerades as a plain word completion.
+   */
+  private currencyItem(lineToCaret: string): SuggestItem | null {
+    if (!this.settings.currencyFormat && !this.settings.currencyWordToSymbol) return null;
+    const cur = currencyProposal(lineToCaret, this.currencyOpts());
     if (!cur) return null;
-    const badge = cur.text.replace(/[\d.,\s]/g, "") || "¤"; // the symbol, stripped of the number
-    return { insert: cur.text, display: cur.text, kind: "currency", score: Infinity, replaceFromCh: cur.start, badge };
+    return { insert: cur.text, display: "Format currency", kind: "currency", score: Infinity, replaceFromCh: cur.start, badge: cur.symbol || "¤" };
   }
 
   /**

@@ -59,10 +59,11 @@ const WORD_TO_SYMBOL: Record<string, string> = {
 };
 
 /**
- * Currencies whose sign conventionally FOLLOWS the number, with a space: "100 kr", "100 zł", the
- * Gulf ISO codes. Everything else hugs the front of the number ("$100", "€100", "R$100").
+ * Currencies whose sign conventionally FOLLOWS the number: the Nordic krona, Polish złoty, Swiss
+ * franc, Vietnamese dong, Ukrainian hryvnia, Russian ruble, and the Gulf ISO codes. Everything else
+ * hugs the front of the number ("$100", "€100", "₹100", "¥100", "R$100").
  */
-const SYMBOL_AFTER = new Set(["kr", "zł", "AED", "SAR", "QAR"]);
+const SYMBOL_AFTER = new Set(["kr", "zł", "Fr", "₫", "₴", "₽", "AED", "SAR", "QAR"]);
 
 /** Which side `symbol` sits on and whether it takes a spacing gap. */
 export function symbolPlacement(symbol: string): { before: boolean; space: boolean } {
@@ -102,22 +103,33 @@ export function groupThousands(digits: string, sep: string): string {
 }
 
 /**
- * Parse a raw typed amount into integer digits and an optional decimal part, remembering which
- * separator the user used for the decimal. A separator followed by 1-2 digits at the very END is the
- * decimal; any other separator is grouping and is stripped. Returns null when there are no digits.
+ * Split a raw typed amount into integer digits and decimal digits, using the STYLE to decide which
+ * separator is the decimal (the one the thousands separator does not use), so a 3-digit decimal like
+ * "10.567" is not mistaken for a thousands group. With a "none" style there is no thousands
+ * separator, so the last "." or "," the user typed is the decimal. Returns null when no digits.
  */
-export function parseAmount(raw: string): { int: string; dec: string; decSep: string } | null {
+export function parseAmount(raw: string, style: CurrencyStyle = { thousands: ",", decimal: "." }): { int: string; dec: string; decSep: string } | null {
   if (!/\d/.test(raw)) return null;
   let body = raw.trim();
+  // Which character marks the decimal here?
+  let decChar: string | null;
+  if (style.thousands === ",") decChar = ".";
+  else if (style.thousands === ".") decChar = ",";
+  else {
+    const lastDot = body.lastIndexOf("."), lastComma = body.lastIndexOf(",");
+    decChar = lastDot < 0 && lastComma < 0 ? null : lastDot > lastComma ? "." : ",";
+  }
   let dec = "";
-  let decSep = ".";
-  const decMatch = body.match(/([.,])(\d{1,2})$/);
-  // Treat a trailing "sep + 1-2 digits" as a decimal only if digits precede it, so "1,000" (a group
-  // of three) stays an integer while "1,50" reads as 1.50.
-  if (decMatch && /\d/.test(body.slice(0, body.length - decMatch[0].length))) {
-    decSep = decMatch[1];
-    dec = decMatch[2];
-    body = body.slice(0, body.length - decMatch[0].length);
+  let decSep = decChar ?? ".";
+  if (decChar) {
+    const idx = body.lastIndexOf(decChar);
+    const after = idx >= 0 ? body.slice(idx + 1) : "";
+    // A decimal is the LAST occurrence of the decimal char followed by pure digits, with digits
+    // before it. Anything else (a stray thousands mark) is stripped as grouping.
+    if (idx >= 0 && /^\d+$/.test(after) && /\d/.test(body.slice(0, idx))) {
+      dec = after;
+      body = body.slice(0, idx);
+    }
   }
   const int = body.replace(/\D/g, "");
   if (!int) return null;
@@ -125,16 +137,17 @@ export function parseAmount(raw: string): { int: string; dec: string; decSep: st
 }
 
 /**
- * Reformat a raw amount's digits with the style's thousands separator, keeping (or converting) the
- * decimal mark. With a "none" style the decimal the user typed is preserved; otherwise it becomes
- * the style's decimal (the one the thousands separator does not use).
+ * Reformat a raw amount with the style's thousands separator and decimal mark. When there is a
+ * decimal part it is padded to AT LEAST two places (a lone "1000.5" becomes "1,000.50"); more places
+ * are kept as typed ("10.567" stays three).
  */
 export function formatAmount(raw: string, style: CurrencyStyle): string {
-  const p = parseAmount(raw);
+  const p = parseAmount(raw, style);
   if (!p) return raw;
   const grouped = groupThousands(p.int, style.thousands);
   if (!p.dec) return grouped;
-  return grouped + (style.decimal ?? p.decSep) + p.dec;
+  const dec = p.dec.length < 2 ? p.dec.padEnd(2, "0") : p.dec;
+  return grouped + (style.decimal ?? p.decSep) + dec;
 }
 
 /** Assemble a symbol and a formatted number on the currency's conventional side. */
@@ -169,7 +182,7 @@ export function detectCurrency(before: string, opts: CurrencyOptions): { start: 
     if (m) {
       const symbol = WORD_TO_SYMBOL[m[2].toLowerCase()];
       const start = before.length - m[0].length;
-      if (symbol && parseAmount(m[1]) && boundaryOk(before, start)) {
+      if (symbol && parseAmount(m[1], opts.style) && boundaryOk(before, start)) {
         return { start, text: composeCurrency(symbol, formatAmount(m[1], opts.style)) };
       }
     }
@@ -179,7 +192,7 @@ export function detectCurrency(before: string, opts: CurrencyOptions): { start: 
   if (opts.format) {
     const sym = `(?:${FORMAT_SYMBOLS.map(escapeRe).join("|")})`;
     let m = before.match(new RegExp(`(${sym})\\s?(\\d[\\d.,]*)$`)); // symbol first
-    if (m && parseAmount(m[2])) {
+    if (m && parseAmount(m[2], opts.style)) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
         const text = composeCurrency(m[1], formatAmount(m[2], opts.style));
@@ -187,11 +200,41 @@ export function detectCurrency(before: string, opts: CurrencyOptions): { start: 
       }
     }
     m = before.match(new RegExp(`(\\d[\\d.,]*)\\s?(${sym})$`)); // symbol last
-    if (m && parseAmount(m[1])) {
+    if (m && parseAmount(m[1], opts.style)) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
         const text = composeCurrency(m[2], formatAmount(m[1], opts.style));
         return text === before.slice(start) ? null : { start, text };
+      }
+    }
+  }
+  return null;
+}
+
+/** The symbol of the first currency word/code that `prefix` starts (for the partial-word popup). */
+function firstSymbolForPrefix(prefix: string): string | null {
+  const p = prefix.toLowerCase();
+  for (const key in WORD_TO_SYMBOL) if (key.startsWith(p)) return WORD_TO_SYMBOL[key];
+  return null;
+}
+
+/**
+ * A currency proposal for the suggestion POPUP, from the text up to the caret. Unlike
+ * {@link detectCurrency} it also fires on a PARTIAL currency word ("1000 doll…"), resolving it to
+ * the currency it is heading toward, so the popup can offer a single "format currency" action
+ * (with the target symbol) instead of autocompleting the word. Returns the span to replace, the
+ * formatted result, and the symbol.
+ */
+export function currencyProposal(before: string, opts: CurrencyOptions): { start: number; text: string; symbol: string } | null {
+  const full = detectCurrency(before, opts);
+  if (full) return { start: full.start, text: full.text, symbol: full.text.replace(/[\d.,\s]/g, "") };
+  if (opts.wordToSymbol) {
+    const m = before.match(/(\d[\d.,]*)\s*([A-Za-z]+)$/);
+    if (m && !WORD_TO_SYMBOL[m[2].toLowerCase()] && isCurrencyWordPrefix(m[2])) {
+      const symbol = firstSymbolForPrefix(m[2]);
+      const start = before.length - m[0].length;
+      if (symbol && parseAmount(m[1], opts.style) && boundaryOk(before, start)) {
+        return { start, text: composeCurrency(symbol, formatAmount(m[1], opts.style)), symbol };
       }
     }
   }

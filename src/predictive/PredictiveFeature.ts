@@ -334,6 +334,9 @@ export class PredictiveFeature {
     if (!this.settings.undoAddsToDictionary) return;
     const w = word.trim();
     if (!w || /\s/.test(w) || this.settings.userDictionary.includes(w)) return; // ignore merge-reverts (contain a space)
+    // Never learn a token containing a digit: those are currency/ordinal reverts ("1000euro",
+    // "21th", "1930's"), not vocabulary. Undoing one of those must not pollute the dictionary.
+    if (/\d/.test(w)) return;
     // Only a word the engine does NOT already know is worth adding: if it is already suggested
     // and recognised, adding it to your personal dictionary is redundant and confusing (you'd be
     // "adding" a word that was already there). A word that IS known should not have been
@@ -355,7 +358,7 @@ export class PredictiveFeature {
    *  Gives feedback when the word is already known, so the action never silently no-ops. */
   private async addWordExplicit(word: string): Promise<void> {
     const w = word.trim();
-    if (!w) return;
+    if (!w || /\d/.test(w)) return; // a token with a digit isn't a dictionary word
     if (this.settings.userDictionary.includes(w)) {
       new Notice(`“${w}” is already in your personal dictionary`);
       return;

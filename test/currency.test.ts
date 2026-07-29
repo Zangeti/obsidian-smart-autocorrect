@@ -10,6 +10,7 @@ import {
   symbolPlacement,
   currencySymbolForWord,
   detectCurrency,
+  currencyProposal,
 } from "../src/predictive/engine/text/currency.ts";
 
 const COMMA = currencyStyleFor("comma");
@@ -23,21 +24,23 @@ test("groupThousands groups digits in threes", () => {
   assert.equal(groupThousands("1000", "."), "1.000");
 });
 
-test("parseAmount splits integer and decimal, remembering the separator", () => {
-  assert.deepEqual(parseAmount("1000"), { int: "1000", dec: "", decSep: "." });
-  assert.deepEqual(parseAmount("1,000"), { int: "1000", dec: "", decSep: "." }); // 3 digits = grouping
-  assert.deepEqual(parseAmount("1000.50"), { int: "1000", dec: "50", decSep: "." });
-  assert.deepEqual(parseAmount("1000,50"), { int: "1000", dec: "50", decSep: "," });
-  assert.equal(parseAmount("abc"), null);
+test("parseAmount uses the style to tell the decimal from a thousands group", () => {
+  assert.deepEqual(parseAmount("1000", COMMA), { int: "1000", dec: "", decSep: "." });
+  assert.deepEqual(parseAmount("1,000", COMMA), { int: "1000", dec: "", decSep: "." }); // comma = grouping
+  assert.deepEqual(parseAmount("1000.50", COMMA), { int: "1000", dec: "50", decSep: "." });
+  assert.deepEqual(parseAmount("10.567", COMMA), { int: "10", dec: "567", decSep: "." }); // 3-digit decimal
+  assert.deepEqual(parseAmount("1000,50", NONE), { int: "1000", dec: "50", decSep: "," });
+  assert.equal(parseAmount("abc", COMMA), null);
 });
 
-test("formatAmount keeps the typed decimal with 'none', converts it with a set separator", () => {
+test("formatAmount pads the decimal to at least two places, keeping more if present", () => {
   assert.equal(formatAmount("1000000", COMMA), "1,000,000");
   assert.equal(formatAmount("1000000", PERIOD), "1.000.000");
-  assert.equal(formatAmount("1000.50", COMMA), "1,000.50"); // comma thousands -> dot decimal
-  assert.equal(formatAmount("1000,50", PERIOD), "1.000,50"); // period thousands -> comma decimal
-  assert.equal(formatAmount("1000.50", NONE), "1000.50"); // none -> keep the dot
-  assert.equal(formatAmount("1000,50", NONE), "1000,50"); // none -> keep the comma
+  assert.equal(formatAmount("1000.5", COMMA), "1,000.50"); // padded to two
+  assert.equal(formatAmount("1000.50", COMMA), "1,000.50");
+  assert.equal(formatAmount("10.567", COMMA), "10.567"); // three kept
+  assert.equal(formatAmount("1000,5", PERIOD), "1.000,50"); // period thousands -> comma decimal, padded
+  assert.equal(formatAmount("1000.5", NONE), "1000.50"); // none -> keep the dot, padded
 });
 
 test("symbolPlacement: sign currencies lead, letter currencies trail", () => {
@@ -102,4 +105,21 @@ test("detectCurrency: leaves already-formatted amounts and non-currency numbers 
 
 test("detectCurrency: does not slice a number glued to a token", () => {
   assert.equal(detectCurrency("abc1000 dollars", { format: false, wordToSymbol: true, style: COMMA }), null);
+});
+
+test("dong and other letter/after currencies trail the number", () => {
+  assert.equal(detectCurrency("1000 dong", { format: false, wordToSymbol: true, style: COMMA })!.text, "1,000 ₫");
+  assert.equal(detectCurrency("1000 zloty", { format: false, wordToSymbol: true, style: COMMA })!.text, "1,000 zł");
+});
+
+test("currencyProposal fires on a PARTIAL currency word for the popup", () => {
+  const opts = { format: true, wordToSymbol: true, style: COMMA };
+  const p = currencyProposal("1000 doll", opts);
+  assert.ok(p);
+  assert.equal(p!.symbol, "$");
+  assert.equal(p!.text, "$1,000");
+  // a symbol amount still resolves
+  assert.equal(currencyProposal("$10000", opts)!.text, "$10,000");
+  // a non-currency word does not
+  assert.equal(currencyProposal("1000 the", opts), null);
 });

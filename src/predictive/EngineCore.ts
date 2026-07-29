@@ -591,8 +591,13 @@ export class EngineCore {
         consider(s.word, "word", pSeed);
         return;
       }
-      // Bare word: each plausible CASE is its own candidate (homograph "polish"/"Polish").
-      for (const v of this.lstm.caseVariants(s.word, context)) consider(v, "word", pSeed);
+      // Bare word: each plausible CASE is its own candidate (homograph "polish"/"Polish"). The
+      // model lists the case it PREFERS in this context first (e.g. after "Federal" it prefers
+      // "Reserve"), so the primary variant keeps the full seed weight and the alternate case is
+      // discounted - otherwise the two tie and the lowercase form can win a proper noun.
+      this.lstm.caseVariants(s.word, context).forEach((v, vi) =>
+        consider(v, "word", vi === 0 ? pSeed : pSeed * 0.45),
+      );
       // Multi-word continuations, each weighted by its real joint extension probability. Only
       // the top few seeds are extended (a compute budget). A phrase is offered ONLY while its
       // first word is still being completed: once the user has typed the whole first word

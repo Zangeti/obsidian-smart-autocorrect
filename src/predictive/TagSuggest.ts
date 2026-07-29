@@ -66,6 +66,9 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     this.engine = engine;
     this.getSettings = getSettings;
     this.onAccept = onAccept;
+    // Render enough rows for up to 5 existing tags plus a few new ones - the base class otherwise
+    // caps the visible list shorter, which is why the existing tags weren't all showing.
+    this.limit = TOTAL_TAGS + MIN_NEW;
     this.bindAcceptKey();
   }
 
