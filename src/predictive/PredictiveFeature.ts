@@ -9,7 +9,6 @@ import type { EditorView } from "@codemirror/view";
 import { pathExcluded, termFreq, matchCase } from "./engine/index";
 import { PredictiveEngineController } from "./PredictiveEngineController";
 import { LinkIndex } from "./LinkIndex";
-import { linkSuggestExtension } from "./linkSuggest";
 import { RelatedIndex } from "./RelatedIndex";
 import { relatedLinksExtension, forceRescan } from "./relatedLinks";
 import { TagSuggest } from "./TagSuggest";
@@ -58,7 +57,6 @@ export class PredictiveFeature {
   /** Semantic + keyword index powering related-note link suggestions. */
   private relatedIndex: RelatedIndex;
   /** Titles the user dismissed this session (kept out of link underlining). */
-  private dismissedLinks = new Set<string>();
   /** Chunk keys the user dismissed this session (kept out of related-link icons). */
   private dismissedRelated = new Set<string>();
   private refreshLinkIndex: () => void;
@@ -647,17 +645,10 @@ export class PredictiveFeature {
     // suggestion right after one (the ghost path checks the transaction directly).
     this.plugin.registerEditorExtension(indentEditField);
 
-    // Ambient link suggestion: underline text matching an existing note title/alias.
+    // Keep the vault title/alias/tag index fresh (drives tag suggestions). The inline link
+    // underline is now the SEMANTIC one built into relatedLinksExtension (below), gated on
+    // `underlineLinks` - the old exact-title underline is retired.
     this.linkIndex.rebuild();
-    this.plugin.registerEditorExtension(
-      linkSuggestExtension(
-        this.plugin.app,
-        this.linkIndex,
-        () => this.settings,
-        () => this.activeFileExcluded(),
-        this.dismissedLinks,
-      ),
-    );
     // Let hovering a suggested link (in the chooser) show Obsidian's native page/section
     // preview without holding a modifier key.
     const ws = this.plugin.app.workspace as unknown as {

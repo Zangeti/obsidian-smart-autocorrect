@@ -31,6 +31,60 @@ interface SegSuggestion {
   to: number;
   key: string;
   candidates: RelatedCandidate[];
+  /** The phrase within the segment that anchors the link - underlined when the setting is on.
+   *  Chosen as the words the segment and its semantically-matched note share, so the underline
+   *  sits on the text the link is actually about. Absent when there is no clean anchor. */
+  span?: { from: number; to: number };
+}
+
+/** Common words never worth anchoring a link on. */
+const ANCHOR_STOP = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "for", "is", "it", "as", "by", "be",
+  "we", "you", "he", "she", "they", "this", "that", "with", "from", "was", "are", "but", "not",
+  "have", "has", "had", "will", "can", "all", "one", "so", "if", "up", "out", "no", "do", "my",
+  "me", "us", "our", "their", "its", "his", "her", "them", "then", "than", "there", "here", "who",
+  "which", "what", "when", "where", "how", "why", "some", "any", "each", "very", "more", "most",
+]);
+
+/**
+ * Pick the phrase in a segment that best anchors a link to `cand` - the LONGEST contiguous run of
+ * content words the segment shares with the matched note (its title, heading and matched section).
+ * The MATCH is semantic (the note was found by embedding similarity); this only decides WHERE to
+ * put the underline. Returns absolute document offsets, or null when there is no substantial shared
+ * phrase (in which case the end-of-segment icon still covers it).
+ */
+function pickAnchorSpan(segText: string, segFrom: number, cand: RelatedCandidate): { from: number; to: number } | null {
+  const anchorWords = new Set<string>();
+  const collect = (t: string) => {
+    for (const w of t.toLowerCase().match(/[a-z][a-z'-]{2,}/g) ?? []) if (!ANCHOR_STOP.has(w)) anchorWords.add(w);
+  };
+  collect(cand.display);
+  if (cand.heading) collect(cand.heading);
+  collect(cand.sectionText || cand.snippet || "");
+  if (anchorWords.size === 0) return null;
+
+  const toks: Array<{ s: number; e: number; w: string }> = [];
+  const re = /[A-Za-z][A-Za-z'-]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(segText))) toks.push({ s: m.index, e: m.index + m[0].length, w: m[0].toLowerCase() });
+
+  let best: { from: number; to: number } | null = null;
+  let bestLen = 0;
+  let i = 0;
+  while (i < toks.length) {
+    if (!anchorWords.has(toks[i].w)) { i++; continue; }
+    let j = i;
+    while (j + 1 < toks.length && anchorWords.has(toks[j + 1].w)) j++;
+    const run = toks.slice(i, j + 1);
+    const words = run.length;
+    const substantial = run.some((t) => t.w.length >= 4 && !ANCHOR_STOP.has(t.w));
+    if ((words >= 2 || substantial) && words > bestLen) {
+      best = { from: segFrom + run[0].s, to: segFrom + run[run.length - 1].e };
+      bestLen = words;
+    }
+    i = j + 1;
+  }
+  return best;
 }
 
 const setRelated = StateEffect.define<SegSuggestion[]>();
@@ -182,6 +236,7 @@ export function relatedLinksExtension(
   );
   const openPopover = (seg: SegSuggestion, iconEl: HTMLElement, view: EditorView) => popover.open(seg, iconEl, view);
 
+  const LINK_MARK = Decoration.mark({ class: "smart-autocorrect-link-underline" });
   const field = StateField.define<{ segs: SegSuggestion[]; deco: DecorationSet }>({
     create: () => ({ segs: [], deco: Decoration.none }),
     update(value, tr) {
@@ -189,15 +244,30 @@ export function relatedLinksExtension(
       for (const e of tr.effects) if (e.is(setRelated)) segs = e.value;
       if (segs === value.segs && !tr.docChanged) return value;
       const mapped = tr.docChanged
-        ? segs.map((s) => ({ ...s, anchor: tr.changes.mapPos(s.anchor), from: tr.changes.mapPos(s.from), to: tr.changes.mapPos(s.to) }))
+        ? segs.map((s) => ({
+            ...s,
+            anchor: tr.changes.mapPos(s.anchor),
+            from: tr.changes.mapPos(s.from),
+            to: tr.changes.mapPos(s.to),
+            span: s.span ? { from: tr.changes.mapPos(s.span.from), to: tr.changes.mapPos(s.span.to) } : undefined,
+          }))
         : segs;
-      const b = new RangeSetBuilder<Decoration>();
+      const cfg = getSettings();
+      // The icon and the underline are independent: the end-of-segment icon follows `suggestLinks`,
+      // the inline underline follows `underlineLinks`. Both are added in ascending position order.
+      const entries: Array<{ from: number; to: number; order: number; deco: Decoration }> = [];
       let last = -1;
       for (const s of [...mapped].sort((a, c) => a.anchor - c.anchor)) {
         if (s.anchor <= last) continue;
         last = s.anchor;
-        b.add(s.anchor, s.anchor, Decoration.widget({ widget: new LinkIconWidget(s, openPopover), side: 1 }));
+        if (cfg.suggestLinks)
+          entries.push({ from: s.anchor, to: s.anchor, order: 1, deco: Decoration.widget({ widget: new LinkIconWidget(s, openPopover), side: 1 }) });
+        if (cfg.underlineLinks && s.span && s.span.from < s.span.to)
+          entries.push({ from: s.span.from, to: s.span.to, order: 0, deco: LINK_MARK });
       }
+      entries.sort((a, c) => a.from - c.from || a.to - c.to || a.order - c.order);
+      const b = new RangeSetBuilder<Decoration>();
+      for (const e of entries) b.add(e.from, e.to, e.deco);
       return { segs: mapped, deco: b.finish() };
     },
     provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
@@ -231,7 +301,10 @@ export function relatedLinksExtension(
       private async recompute(view: EditorView) {
         const s = getSettings();
         const mine = ++this.token;
-        if (!s.pluginEnabled || !s.suggestLinks || isExcluded()) {
+        // The same semantic pass feeds both the end-of-segment icons (suggestLinks) and the inline
+        // underline (underlineLinks), so run whenever EITHER is on; the field then shows each part
+        // per its own setting.
+        if (!s.pluginEnabled || (!s.suggestLinks && !s.underlineLinks) || isExcluded()) {
           if (currentFor(view).length) view.dispatch({ effects: setRelated.of([]) });
           return;
         }
@@ -257,7 +330,10 @@ export function relatedLinksExtension(
           // explicit [[ picker stays looser, since there the user has already chosen to link.
           const cands = await index.candidatesFor(queryText, excludePath, exclude, 5, s.relatedSensitivity, true);
           if (this.token !== mine) return;
-          if (cands.length > 0) out.push({ anchor: seg.anchor, from: seg.from, to: seg.to, key, candidates: cands });
+          if (cands.length > 0) {
+            const span = pickAnchorSpan(seg.text, seg.from, cands[0]) ?? undefined;
+            out.push({ anchor: seg.anchor, from: seg.from, to: seg.to, key, candidates: cands, span });
+          }
         }
         if (this.token !== mine) return;
         view.dispatch({ effects: setRelated.of(out) });
@@ -277,7 +353,44 @@ export function relatedLinksExtension(
     },
     ".smart-autocorrect-link-icon:hover": { opacity: "1" },
     ".smart-autocorrect-link-icon svg": { width: "0.85em", height: "0.85em" },
+    ".smart-autocorrect-link-underline": {
+      textDecoration: "underline",
+      textDecorationStyle: "dotted",
+      textDecorationColor: "color-mix(in srgb, var(--text-accent) 35%, transparent)",
+      textUnderlineOffset: "3px",
+      cursor: "pointer",
+    },
+    ".smart-autocorrect-link-underline:hover": { textDecorationColor: "var(--text-accent)" },
   });
 
-  return [field, runner, theme];
+  // Click / hover on the underlined phrase: same chooser as the icon, but the phrase itself becomes
+  // the link. We select the span first, so the chooser's highlight-to-link path applies it.
+  const segAt = (view: EditorView, evt: MouseEvent): SegSuggestion | null => {
+    const pos = view.posAtCoords({ x: evt.clientX, y: evt.clientY });
+    if (pos == null) return null;
+    return currentFor(view).find((s) => s.span && pos >= s.span.from && pos <= s.span.to) ?? null;
+  };
+  const underlineHandlers = EditorView.domEventHandlers({
+    mousedown(evt, view) {
+      const el = (evt.target as HTMLElement)?.closest?.(".smart-autocorrect-link-underline") as HTMLElement | null;
+      if (!el) return false;
+      const seg = segAt(view, evt);
+      if (!seg?.span) return false;
+      evt.preventDefault();
+      view.dispatch({ selection: { anchor: seg.span.from, head: seg.span.to } });
+      popover.open(seg, el, view);
+      return true;
+    },
+    mouseover(evt, view) {
+      const el = (evt.target as HTMLElement)?.closest?.(".smart-autocorrect-link-underline") as HTMLElement | null;
+      if (!el) return false;
+      const seg = segAt(view, evt);
+      const target = seg?.candidates[0]?.target;
+      if (!target) return false;
+      app.workspace.trigger("hover-link", { event: evt, source: "smart-autocorrect", hoverParent: view.dom, targetEl: el, linktext: target });
+      return false;
+    },
+  });
+
+  return [field, runner, underlineHandlers, theme];
 }
