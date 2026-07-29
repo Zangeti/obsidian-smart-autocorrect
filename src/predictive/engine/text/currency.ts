@@ -18,13 +18,24 @@ export interface CurrencyStyle {
   thousands: string;
   /** Decimal mark to emit: "." , "," , or null = keep whatever the user typed. */
   decimal: string | null;
+  /** Place the euro sign AFTER the number ("100 €") instead of before ("€100"). */
+  euroAfter?: boolean;
+  /** Emit the ISO code after the number ("1,000 USD") instead of the symbol ("$1,000"). */
+  useCode?: boolean;
 }
 
-/** Map the one user setting (thousands separator) to a full style. */
-export function currencyStyleFor(thousands: "comma" | "period" | "none"): CurrencyStyle {
-  if (thousands === "period") return { thousands: ".", decimal: "," }; // 1.000,50
-  if (thousands === "none") return { thousands: "", decimal: null }; //   1000.50 or 1000,50 (kept)
-  return { thousands: ",", decimal: "." }; //                              1,000.50
+/** Map the user settings to a full style. */
+export function currencyStyleFor(
+  thousands: "comma" | "period" | "none",
+  opts: { euroAfter?: boolean; useCode?: boolean } = {},
+): CurrencyStyle {
+  const base =
+    thousands === "period"
+      ? { thousands: ".", decimal: "," } //  1.000,50
+      : thousands === "none"
+        ? { thousands: "", decimal: null } // 1000.50 or 1000,50 (kept)
+        : { thousands: ",", decimal: "." }; // 1,000.50
+  return { ...base, euroAfter: opts.euroAfter, useCode: opts.useCode };
 }
 
 /**
@@ -65,8 +76,45 @@ const WORD_TO_SYMBOL: Record<string, string> = {
  */
 const SYMBOL_AFTER = new Set(["kr", "zł", "Fr", "₫", "₴", "₽", "AED", "SAR", "QAR"]);
 
-/** Which side `symbol` sits on and whether it takes a spacing gap. */
-export function symbolPlacement(symbol: string): { before: boolean; space: boolean } {
+/** Spelled-out currency words / codes → ISO 4217 code, for the "use code instead of symbol" mode.
+ *  Distinguishes currencies that share a sign ($ → USD but "cad" → CAD, ¥ → JPY but "yuan" → CNY). */
+const WORD_TO_CODE: Record<string, string> = {
+  dollar: "USD", dollars: "USD", usd: "USD", buck: "USD", bucks: "USD",
+  cad: "CAD", aud: "AUD", nzd: "NZD", sgd: "SGD", hkd: "HKD", mxn: "MXN", peso: "MXN", pesos: "MXN",
+  euro: "EUR", euros: "EUR", eur: "EUR",
+  pound: "GBP", pounds: "GBP", gbp: "GBP", quid: "GBP", sterling: "GBP",
+  yen: "JPY", jpy: "JPY", yuan: "CNY", cny: "CNY", rmb: "CNY", renminbi: "CNY",
+  rupee: "INR", rupees: "INR", inr: "INR",
+  franc: "CHF", francs: "CHF", chf: "CHF",
+  ruble: "RUB", rubles: "RUB", rouble: "RUB", roubles: "RUB", rub: "RUB",
+  won: "KRW", krw: "KRW",
+  lira: "TRY", try: "TRY",
+  real: "BRL", reais: "BRL", brl: "BRL",
+  rand: "ZAR", zar: "ZAR",
+  krona: "SEK", kronor: "SEK", krone: "NOK", kroner: "DKK", sek: "SEK", nok: "NOK", dkk: "DKK",
+  zloty: "PLN", zlotych: "PLN", pln: "PLN",
+  baht: "THB", thb: "THB",
+  shekel: "ILS", shekels: "ILS", ils: "ILS",
+  naira: "NGN", ngn: "NGN",
+  php: "PHP",
+  dong: "VND", vnd: "VND",
+  rupiah: "IDR", idr: "IDR", ringgit: "MYR", myr: "MYR",
+  hryvnia: "UAH", uah: "UAH",
+  aed: "AED", sar: "SAR", qar: "QAR",
+  btc: "BTC", bitcoin: "BTC",
+};
+
+/** Default ISO code for a bare symbol (a "$" amount with no word is assumed USD, etc.). */
+const SYMBOL_TO_CODE: Record<string, string> = {
+  "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₽": "RUB", "₩": "KRW", "₺": "TRY",
+  "₴": "UAH", "₪": "ILS", "₦": "NGN", "₱": "PHP", "₫": "VND", "฿": "THB", "₿": "BTC", "R$": "BRL",
+  "Rp": "IDR", "RM": "MYR", "R": "ZAR", "kr": "SEK", "zł": "PLN", "Fr": "CHF",
+};
+
+/** Which side `symbol` sits on and whether it takes a spacing gap. The euro follows the style
+ *  setting (before by default); every other currency follows its fixed convention. */
+export function symbolPlacement(symbol: string, style?: CurrencyStyle): { before: boolean; space: boolean } {
+  if (symbol === "€") return { before: !style?.euroAfter, space: !!style?.euroAfter };
   const after = SYMBOL_AFTER.has(symbol);
   return { before: !after, space: after };
 }
@@ -150,10 +198,26 @@ export function formatAmount(raw: string, style: CurrencyStyle): string {
   return grouped + (style.decimal ?? p.decSep) + dec;
 }
 
-/** Assemble a symbol and a formatted number on the currency's conventional side. */
-export function composeCurrency(symbol: string, amount: string): string {
-  const { before, space } = symbolPlacement(symbol);
+/** Assemble a symbol and a formatted number on the currency's conventional side (euro follows the
+ *  style setting). Does not handle the sign or ISO-code mode - see {@link buildCurrency}. */
+export function composeCurrency(symbol: string, amount: string, style?: CurrencyStyle): string {
+  const { before, space } = symbolPlacement(symbol, style);
   return before ? `${symbol}${amount}` : `${amount}${space ? " " : ""}${symbol}`;
+}
+
+/**
+ * Turn an identified currency plus a raw number into the final surface, honouring the sign, the
+ * ISO-code mode ("1,000 USD"), the euro placement, and the thousands/decimal style. `sourceWord` is
+ * the word/code the user typed, when known, so a shared sign resolves to the right code ($ but CAD).
+ */
+function buildCurrency(symbol: string, rawNumber: string, style: CurrencyStyle, sourceWord?: string): string {
+  const sign = /^\s*-/.test(rawNumber) ? "-" : "";
+  const amount = formatAmount(rawNumber.replace(/^\s*-/, ""), style);
+  if (style.useCode) {
+    const code = (sourceWord && WORD_TO_CODE[sourceWord.toLowerCase()]) || SYMBOL_TO_CODE[symbol] || symbol;
+    return `${sign}${amount} ${code}`;
+  }
+  return sign + composeCurrency(symbol, amount, style);
 }
 
 export interface CurrencyOptions {
@@ -176,34 +240,34 @@ export interface CurrencyOptions {
  */
 export function detectCurrency(before: string, opts: CurrencyOptions): { start: number; text: string } | null {
   // Case A - number then a spelled-out currency word: "1000 dollars" -> "$1,000". `\s*` allows zero
-  // spaces, so "1000euro" works too.
+  // spaces, so "1000euro" works too; an optional leading "-" gives a negative amount.
   if (opts.wordToSymbol) {
-    const m = before.match(/(\d[\d.,]*)\s*([A-Za-z]+)$/);
+    const m = before.match(/(-?\d[\d.,]*)\s*([A-Za-z]+)$/);
     if (m) {
       const symbol = WORD_TO_SYMBOL[m[2].toLowerCase()];
       const start = before.length - m[0].length;
       if (symbol && parseAmount(m[1], opts.style) && boundaryOk(before, start)) {
-        return { start, text: composeCurrency(symbol, formatAmount(m[1], opts.style)) };
+        return { start, text: buildCurrency(symbol, m[1], opts.style, m[2]) };
       }
     }
   }
-  // Case B - an amount that already has a symbol, on either side: "$1000", "1000$", "$ 1000". The
-  // symbol is moved to its conventional side by composeCurrency.
+  // Case B - an amount that already has a symbol, on either side: "$1000", "1000$", "-$1000". The
+  // symbol/code is moved to its conventional side by buildCurrency.
   if (opts.format) {
     const sym = `(?:${FORMAT_SYMBOLS.map(escapeRe).join("|")})`;
-    let m = before.match(new RegExp(`(${sym})\\s?(\\d[\\d.,]*)$`)); // symbol first
-    if (m && parseAmount(m[2], opts.style)) {
+    let m = before.match(new RegExp(`(-?)(${sym})\\s?(\\d[\\d.,]*)$`)); // symbol first (opt. sign)
+    if (m && parseAmount(m[3], opts.style)) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
-        const text = composeCurrency(m[1], formatAmount(m[2], opts.style));
+        const text = buildCurrency(m[2], m[1] + m[3], opts.style);
         return text === before.slice(start) ? null : { start, text };
       }
     }
-    m = before.match(new RegExp(`(\\d[\\d.,]*)\\s?(${sym})$`)); // symbol last
+    m = before.match(new RegExp(`(-?\\d[\\d.,]*)\\s?(${sym})$`)); // symbol last (opt. sign)
     if (m && parseAmount(m[1], opts.style)) {
       const start = before.length - m[0].length;
       if (boundaryOk(before, start)) {
-        const text = composeCurrency(m[2], formatAmount(m[1], opts.style));
+        const text = buildCurrency(m[2], m[1], opts.style);
         return text === before.slice(start) ? null : { start, text };
       }
     }
@@ -226,15 +290,17 @@ function firstSymbolForPrefix(prefix: string): string | null {
  * formatted result, and the symbol.
  */
 export function currencyProposal(before: string, opts: CurrencyOptions): { start: number; text: string; symbol: string } | null {
+  const badgeOf = (text: string) => text.replace(/[-\d.,\s]/g, ""); // the symbol/code, minus the number
   const full = detectCurrency(before, opts);
-  if (full) return { start: full.start, text: full.text, symbol: full.text.replace(/[\d.,\s]/g, "") };
+  if (full) return { start: full.start, text: full.text, symbol: badgeOf(full.text) };
   if (opts.wordToSymbol) {
-    const m = before.match(/(\d[\d.,]*)\s*([A-Za-z]+)$/);
+    const m = before.match(/(-?\d[\d.,]*)\s*([A-Za-z]+)$/);
     if (m && !WORD_TO_SYMBOL[m[2].toLowerCase()] && isCurrencyWordPrefix(m[2])) {
       const symbol = firstSymbolForPrefix(m[2]);
       const start = before.length - m[0].length;
       if (symbol && parseAmount(m[1], opts.style) && boundaryOk(before, start)) {
-        return { start, text: composeCurrency(symbol, formatAmount(m[1], opts.style)), symbol };
+        const text = buildCurrency(symbol, m[1], opts.style);
+        return { start, text, symbol: badgeOf(text) };
       }
     }
   }

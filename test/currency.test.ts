@@ -107,6 +107,31 @@ test("detectCurrency: does not slice a number glued to a token", () => {
   assert.equal(detectCurrency("abc1000 dollars", { format: false, wordToSymbol: true, style: COMMA }), null);
 });
 
+test("negative amounts keep the sign at the front", () => {
+  const o = { format: true, wordToSymbol: true, style: COMMA };
+  assert.equal(detectCurrency("-1000 dollars", o)!.text, "-$1,000");
+  assert.equal(detectCurrency("-$1000", o)!.text, "-$1,000");
+  assert.equal(detectCurrency("-50 euros", o)!.text, "-€50");
+});
+
+test("euro placement follows the style setting", () => {
+  const after = currencyStyleFor("comma", { euroAfter: true });
+  assert.equal(detectCurrency("1000 euros", { format: true, wordToSymbol: true, style: after })!.text, "1,000 €");
+  assert.equal(detectCurrency("€1000", { format: true, wordToSymbol: true, style: after })!.text, "1,000 €");
+  // other currencies are unaffected by the euro setting
+  assert.equal(detectCurrency("$1000", { format: true, wordToSymbol: true, style: after })!.text, "$1,000");
+});
+
+test("ISO-code mode emits the right code, distinguishing shared signs", () => {
+  const code = currencyStyleFor("comma", { useCode: true });
+  const o = { format: true, wordToSymbol: true, style: code };
+  assert.equal(detectCurrency("1000 dollars", o)!.text, "1,000 USD");
+  assert.equal(detectCurrency("1000 CAD", o)!.text, "1,000 CAD"); // shares "$" but coded CAD
+  assert.equal(detectCurrency("1000 yuan", o)!.text, "1,000 CNY"); // shares "¥" but coded CNY
+  assert.equal(detectCurrency("$5000", o)!.text, "5,000 USD"); // bare "$" defaults to USD
+  assert.equal(detectCurrency("-100 pounds", o)!.text, "-100 GBP");
+});
+
 test("dong and other letter/after currencies trail the number", () => {
   assert.equal(detectCurrency("1000 dong", { format: false, wordToSymbol: true, style: COMMA })!.text, "1,000 ₫");
   assert.equal(detectCurrency("1000 zloty", { format: false, wordToSymbol: true, style: COMMA })!.text, "1,000 zł");

@@ -313,7 +313,10 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     return {
       format: this.settings.currencyFormat,
       wordToSymbol: this.settings.currencyWordToSymbol,
-      style: currencyStyleFor(this.settings.currencyThousands),
+      style: currencyStyleFor(this.settings.currencyThousands, {
+        euroAfter: this.settings.currencyEuroPlacement === "after",
+        useCode: this.settings.currencyUseCode,
+      }),
     };
   }
 

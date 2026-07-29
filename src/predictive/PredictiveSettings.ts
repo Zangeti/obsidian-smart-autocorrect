@@ -189,6 +189,13 @@ export interface PredictiveSettings {
    *  $1000. The decimal mark and symbol side follow from it (comma/none = English style, symbol
    *  before; period = European style, symbol after). */
   currencyThousands: "comma" | "period" | "none";
+  /** Where the euro sign sits: "before" (€100) or "after" (100 €). Other currencies follow their
+   *  own fixed convention; only the euro genuinely varies by locale. */
+  currencyEuroPlacement: "before" | "after";
+  /** Emit the ISO code instead of the symbol ("1,000 USD" rather than "$1,000"). */
+  currencyUseCode: boolean;
+  /** Convert a typed fraction to its Unicode glyph on a boundary ("1/2" → "½"). */
+  fractionGlyphs: boolean;
   /** Keep the note's frontmatter `tags:` in sync with the #tags used in its body: add a
    *  tag when it first appears inline, remove it when its last inline use is deleted. */
   syncFrontmatterTags: boolean;
@@ -282,6 +289,9 @@ export const DEFAULT_PREDICTIVE_SETTINGS: PredictiveSettings = {
   currencyFormat: true,
   currencyWordToSymbol: true,
   currencyThousands: "comma",
+  currencyEuroPlacement: "before",
+  currencyUseCode: false,
+  fractionGlyphs: false,
   syncFrontmatterTags: true,
   replaceLinkMenu: true,
 };
@@ -739,11 +749,12 @@ export function buildPredictiveSettingGroups(
       }),
     );
 
-  // --- additional features -----------------------------------------------
-  b.group("Additional features", true);
+  // --- convenience: small auto-formatting helpers ------------------------
+  b.group("Convenience (auto-formatting)", true);
+  b.note("Small formatting helpers that tidy up what you type. Each is independent.");
   toggle(
     "Tidy currency amounts",
-    'Once you finish an amount that has a currency symbol, groups the thousands and moves the symbol to where that currency normally sits ("$1000" becomes "$1,000").',
+    'Once you finish an amount that has a currency symbol, groups the thousands and moves the symbol to where that currency normally sits ("$1000" becomes "$1,000", "1000$" becomes "$1,000").',
     "currencyFormat",
   );
   toggle(
@@ -765,6 +776,29 @@ export function buildPredictiveSettingGroups(
           commit();
         }),
     );
+  row()
+    .setName("Euro sign position")
+    .setDesc("The euro is the one sign whose side genuinely varies by locale. Everything else follows its own convention.")
+    .addDropdown((d) =>
+      d
+        .addOption("before", "€100 (before)")
+        .addOption("after", "100 € (after)")
+        .setValue(settings.currencyEuroPlacement)
+        .onChange((v) => {
+          settings.currencyEuroPlacement = v as PredictiveSettings["currencyEuroPlacement"];
+          commit();
+        }),
+    );
+  toggle(
+    "Use ISO codes instead of symbols",
+    'Write the three-letter code after the number ("1,000 USD", "1,000 EUR") rather than the symbol. Distinguishes currencies that share a sign (USD vs CAD, JPY vs CNY).',
+    "currencyUseCode",
+  );
+  toggle(
+    "Fraction glyphs",
+    'Turn a typed fraction into its single character ("1/2" becomes "½", "3/4" becomes "¾"). Only fractions that have one are converted, and dates like "1/2/2024" are left alone.',
+    "fractionGlyphs",
+  );
 
   // --- markdown / performance --------------------------------------------
   b.group("Links & tags", true);

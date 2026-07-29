@@ -9,7 +9,7 @@
  * live inline in the prose where a concept is mentioned, tags are typed with `#`. One
  * consistent, native feel for both.
  */
-import { EditorSuggest, type App, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo, type TFile } from "obsidian";
+import { EditorSuggest, prepareFuzzySearch, type App, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo, type TFile } from "obsidian";
 import { termFreq } from "./engine/index";
 import type { LinkIndex } from "./LinkIndex";
 import type { PredictiveEngineController } from "./PredictiveEngineController";
@@ -112,6 +112,12 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     const tf = termFreq(text);
     const applied = appliedTags(this.app, context.file);
 
+    // Fuzzy, typo-tolerant matcher for what you've typed. Matching the FULL tag (not just the leaf)
+    // makes nested tags fall out naturally: "proj/a" fuzzy-matches "project/alpha". A tag matches if
+    // either its whole path or its leaf does.
+    const fuzzy = context.query ? prepareFuzzySearch(context.query) : null;
+    const matches = (s: string) => !fuzzy || fuzzy(s) !== null;
+
     // Gather candidate underlying words so we fetch all rarities in one worker call.
     const wordsNeeded = new Set<string>();
     const existing: { tag: string; count: number; leaf: string }[] = [];
@@ -119,7 +125,7 @@ export class TagSuggest extends EditorSuggest<TagItem> {
       if (applied.has(tag)) continue;
       if (!isValidTag(tag)) continue;
       const leaf = tag.split("/").pop() ?? tag;
-      if (q && !tag.includes(q) && !leaf.includes(q)) continue;
+      if (!matches(tag) && !matches(leaf)) continue;
       existing.push({ tag, count, leaf });
       wordsNeeded.add(leaf);
     }
@@ -127,7 +133,7 @@ export class TagSuggest extends EditorSuggest<TagItem> {
     for (const [w] of tf) {
       if (w.length < 4 || this.index.tags.has(w) || applied.has(w)) continue;
       if (!isValidTag(w)) continue; // a word of the note is not automatically a legal tag
-      if (q && !w.includes(q)) continue;
+      if (!matches(w)) continue;
       fresh.push(w);
       wordsNeeded.add(w);
     }

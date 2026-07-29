@@ -26,6 +26,7 @@ import {
   detectCurrency,
   currencyStyleFor,
   fixNumericSuffix,
+  fractionGlyph,
   type SentenceCaseConfig,
 } from "./engine/index";
 import { contextWords } from "./context";
@@ -281,15 +282,32 @@ export class AutocorrectController {
     const hit = detectCurrency(uptoToken, {
       format: this.settings.currencyFormat,
       wordToSymbol: this.settings.currencyWordToSymbol,
-      style: currencyStyleFor(this.settings.currencyThousands),
+      style: currencyStyleFor(this.settings.currencyThousands, {
+        euroAfter: this.settings.currencyEuroPlacement === "after",
+        useCode: this.settings.currencyUseCode,
+      }),
     });
     if (!hit) return false;
+    return this.applySpanFix(editor, cursor, uptoToken, hit);
+  }
+
+  /** Convert a typed fraction to its glyph ("1/2" → "½") on a boundary, if the setting is on. */
+  private tryFraction(editor: Editor, cursor: EditorPosition, uptoToken: string): boolean {
+    if (!this.settings.fractionGlyphs) return false;
+    const hit = fractionGlyph(uptoToken);
+    return hit ? this.applySpanFix(editor, cursor, uptoToken, hit) : false;
+  }
+
+  /** Apply a `{ start, text }` span replacement within the current line, as one revertible edit. */
+  private applySpanFix(editor: Editor, cursor: EditorPosition, uptoToken: string, hit: { start: number; text: string }): boolean {
     const original = uptoToken.slice(hit.start);
-    const from: EditorPosition = { line: cursor.line, ch: hit.start };
-    const to: EditorPosition = { line: cursor.line, ch: uptoToken.length };
-    // Guard against a stale async buffer: only rewrite if the exact span is still there.
     if (editor.getLine(cursor.line).slice(hit.start, uptoToken.length) !== original) return false;
-    this.applyCorrection(editor, from, to, hit.text);
+    this.applyCorrection(
+      editor,
+      { line: cursor.line, ch: hit.start },
+      { line: cursor.line, ch: uptoToken.length },
+      hit.text,
+    );
     this.trackCorrection(original, hit.text);
     this.justCorrected = true;
     return true;
@@ -341,6 +359,8 @@ export class AutocorrectController {
     // Numeric-suffix tidying: a wrong ordinal ("21th" → "21st") or a decade apostrophe ("1930's" →
     // "1930s"). Also number-glued, so it must run before the letter-token logic and its ordinal guard.
     if (this.tryNumericSuffix(editor, cursor, uptoToken)) return;
+    // Fraction glyphs ("1/2" → "½"), also no letter token of their own.
+    if (this.tryFraction(editor, cursor, uptoToken)) return;
 
     const tokenMatch = uptoToken.match(/([A-Za-z][A-Za-z'-]*)$/);
     if (!tokenMatch) return;
@@ -371,6 +391,17 @@ export class AutocorrectController {
     // into "W.R.T." and, on the trailing SPACE, "e.g." into "e.G.". Leave such a letter EXACTLY
     // as typed, whatever the boundary character (space or the next dot).
     if (/^[A-Za-z]$/.test(token) && (precedingText.endsWith(".") || before.slice(-1) === ".")) return;
+
+    // The pronoun "i" is always "I", including its contractions ("i'm" → "I'm", "i'll" → "I'll").
+    // Unambiguous, so it needs no model or word list - just the one rule. (Reaching here means it is
+    // a standalone word, not part of a dotted initialism like "e.g.".)
+    if (this.settings.autoCapitalize && (token === "i" || /^i'(m|ll|ve|d|re)$/i.test(token))) {
+      const capped = "I" + token.slice(1);
+      this.applyCorrection(editor, { line: cursor.line, ch: tokenStartCh }, { line: cursor.line, ch: tokenStartCh + token.length }, capped);
+      this.trackCorrection(token, capped);
+      this.justCorrected = true;
+      return;
+    }
 
     // Accidental doubled word ("the the" -> "the"): if the word just typed duplicates the
     // one before it and is never validly doubled, delete this copy plus the space before it,
