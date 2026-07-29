@@ -29,6 +29,7 @@ import {
   suggestionCase,
   currencyProposal,
   currencyStyleFor,
+  currencySymbolForWord,
   isCurrencyWordPrefix,
   type SuggestionCase,
 } from "./engine/index";
@@ -292,11 +293,18 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
       items = []; // a worker hiccup shows no popup rather than throwing at the user
     }
     const merged = this.withPhrase(context, items);
-    const out = this.cased(before, context.query, this.withDictionary(context.query, merged));
+    let out = this.cased(before, context.query, this.withDictionary(context.query, merged));
     this.acceptBusy = false; // a fresh list is ready - the accept key may fire again
     // A candidate that saves no keystrokes (e.g. a word already typed out in full) is
     // dropped upstream by the expected-keystrokes-saved ranking in EngineCore.getSuggestions
     // - its saving is <= 0 - so no display-side exact-match filter is needed here.
+
+    // Right after a number ("1000 " -> "dollars"/"euros"/"yen"…), drop EVERY currency-word
+    // prediction: accepting one only triggers the currency conversion, so offering the word is
+    // redundant and misleading. The "format currency" action above is the single intended path.
+    if ((this.settings.currencyWordToSymbol || this.settings.currencyFormat) && /\d[\d.,]*\s*$/.test(before + context.query)) {
+      out = out.filter((i) => i.kind === "currency" || !currencySymbolForWord(i.insert.trim()));
+    }
     return out;
   }
 
@@ -454,7 +462,7 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     } else if (value.kind === "dictionary") {
       el.createSpan({ text: "📖 yours", cls: "predictive-kind" });
     } else if (value.kind === "currency") {
-      el.createSpan({ text: `💱 ${value.badge ?? ""}`, cls: "predictive-kind" });
+      el.createSpan({ text: value.badge ?? "", cls: "predictive-kind" });
     }
   }
 
