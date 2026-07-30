@@ -409,7 +409,14 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     this.shownCase = mode;
     const out =
       mode === "none"
-        ? items
+        ? // No position case, but if YOU typed a capital ("Fed…"), match it - and bake that into the
+          // DISPLAY too, so the menu shows the word in the exact form it will be inserted ("Federal",
+          // not "federal"). Previously the case was only applied on accept, so the row looked lower-case.
+          items.map((i) =>
+            i.kind === "dictionary"
+              ? i
+              : { ...i, insert: this.matchCaseToQuery(query, i.insert), display: this.matchCaseToQuery(query, i.display) },
+          )
         : items.map((i) =>
             i.kind === "dictionary"
               ? i
@@ -509,10 +516,9 @@ export class PredictiveSuggest extends EditorSuggest<SuggestItem> {
     // list the user was looking at - which is the very bug this whole path exists to
     // fix. matchCaseToQuery only applies when no case decision was made ("none"),
     // where it still does useful work ("Par" -> "Paris").
-    const insert =
-      value.kind === "dictionary" || this.shownCase !== "none"
-        ? value.insert
-        : this.matchCaseToQuery(ctx.query, value.insert);
+    // `value.insert` was already cased for this position (and matched to the query's capital) by
+    // cased(), so it is exactly what the row showed - insert it verbatim.
+    const insert = value.insert;
     // The model predicts punctuation as ordinary tokens, so a suggestion may open
     // with one. English puts no space before "," or "." - but the popup triggers
     // right after "word ", so replacing from the cursor would give "world ,".

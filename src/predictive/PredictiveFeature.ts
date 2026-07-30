@@ -17,6 +17,7 @@ import { openLinkSelection } from "./LinkSelectionModal";
 import { ensureAssets, missingAssets } from "./ModelAssets";
 import { LinkChooser } from "./LinkChooser";
 import { AlternativesPopup } from "./AlternativesPopup";
+import { DictionaryModal } from "./DictionaryModal";
 import { contextWords } from "./context";
 import { PersonalizationStore } from "./PersonalizationStore";
 import { PredictiveSuggest } from "./PredictiveSuggest";
@@ -1160,6 +1161,11 @@ export class PredictiveFeature {
           };
         },
         onOpenStats: () => this.openStats(),
+        onOpenDictionary: () =>
+          new DictionaryModal(this.plugin.app, this.settings, () => {
+            this.onSettingsChanged();
+            this.onPersistSettings?.();
+          }).open(),
         onOpenTutorial: () => this.openTutorial(),
         onResetStats: () => this.confirmResetStats(),
         onResetSettings: () => this.confirmResetSettings(save, refresh),

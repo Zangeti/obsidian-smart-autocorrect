@@ -77,6 +77,9 @@ export interface DocEntry {
  *  utility argmax rarely favours a longer phrase) and each extra word is another whole beam of
  *  the expensive f32 recurrent steps. */
 const MAX_PHRASE_WORDS = 4;
+/** A menu candidate whose probability is below this fraction of the most-likely candidate's is
+ *  dropped as nonsense, regardless of how many keystrokes it would save. */
+const MENU_MIN_PROB_RATIO = 0.035;
 
 /**
  * Choose which candidates to show and in what order so the WHOLE menu maximises expected
@@ -549,6 +552,12 @@ export class EngineCore {
     const maxScore = Math.max(...seeds.map((s) => s.score));
     const weights = seeds.map((s) => Math.exp(s.score - maxScore));
     const wSum = weights.reduce((a, b) => a + b, 0) || 1;
+    // Confidence floor: a candidate far less likely than the best one is NONSENSE in the menu no
+    // matter how long it is (length otherwise lets a rare word buy a slot via keystrokes-saved).
+    // This is the root fix for "why is it suggesting some obscure word" - we simply never surface a
+    // seed whose probability is a small fraction of the top seed's. Data-driven, no word lists.
+    const topP = Math.max(...weights) / wSum;
+    const pFloor = topP * MENU_MIN_PROB_RATIO;
 
     const BEAM = 3; // beam width / #seeds to phrase-extend: a compute budget, not a threshold
     const maxWords = MAX_PHRASE_WORDS;
@@ -587,6 +596,7 @@ export class EngineCore {
 
     seeds.forEach((s, i) => {
       const pSeed = weights[i] / wSum; // P(this first word), among the shown candidates
+      if (pSeed < pFloor) return; // too unlikely relative to the best - never surface it
       if (!this.lstm) {
         consider(s.word, "word", pSeed);
         return;
@@ -622,6 +632,13 @@ export class EngineCore {
     // and run a small DP over "how many items placed so far" (= the next slot index) that
     // decides include/skip for each - O(N·k), exact. An item whose saving cannot cover its
     // slot cost is simply left out, which also caps the menu length naturally.
+    // Prefer the SINGULAR when both a word and its plural are on offer. Extending a singular ("cat"
+    // -> "cats") is one keystroke; going the other way ("cats" -> "cat") is a backspace people
+    // dislike more. So a singular whose plural is also a candidate gets +1 to its saving, which
+    // trims the plural's length-driven domination without hiding it.
+    for (const c of best.values()) {
+      if (/[a-z]$/.test(c.insert) && (best.has(c.insert + "s") || best.has(c.insert + "es"))) c.saved += 1;
+    }
     const menu = orderMenu([...best.values()], k);
 
     // Top up a SPARSE menu from the bundled word list (#8). When the context-driven engine

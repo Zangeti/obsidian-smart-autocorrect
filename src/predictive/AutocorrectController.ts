@@ -49,6 +49,10 @@ export class AutocorrectController {
   private justCorrected = false;
   /** Personal dictionary, EXACT surface forms. Rebuilt on settings change. */
   private dictionary = new Set<string>();
+  /** Lower-cased word -> the distinct dictionary casings of it. A single casing overrides the model
+   *  ("iphone" -> "iPhone"); several casings are left to the model to pick between. Rebuilt with the
+   *  dictionary. */
+  private dictCase = new Map<string, string[]>();
 
   // --- deferred, revert-driven dictionary/abbreviation learning -----------------------------
   // A bounded history of recent corrections so a revert is recognised even when other edits
@@ -79,13 +83,24 @@ export class AutocorrectController {
     this.engine = engine;
     this.settings = settings;
     this.caseCfg = defaultSentenceCaseConfig(settings.extraAbbreviations);
-    this.dictionary = new Set(settings.userDictionary);
+    this.buildDictionary(settings.userDictionary);
   }
 
   updateSettings(settings: PredictiveSettings): void {
     this.settings = settings;
     this.caseCfg = defaultSentenceCaseConfig(settings.extraAbbreviations);
-    this.dictionary = new Set(settings.userDictionary);
+    this.buildDictionary(settings.userDictionary);
+  }
+
+  private buildDictionary(words: string[]): void {
+    this.dictionary = new Set(words);
+    this.dictCase = new Map();
+    for (const w of words) {
+      const lc = w.toLowerCase();
+      const arr = this.dictCase.get(lc) ?? [];
+      if (!arr.includes(w)) arr.push(w);
+      this.dictCase.set(lc, arr);
+    }
   }
 
   register(): void {
@@ -234,6 +249,11 @@ export class AutocorrectController {
     for (const entry of this.dictionary) {
       if (capitalizeFirst(entry) === token || entry.toUpperCase() === token) return entry;
     }
+    // Case override: a word whose dictionary has exactly ONE casing takes that casing even when you
+    // typed it in another case ("iphone" -> "iPhone"). applyPinnedCasing still adjusts for sentence
+    // position. When several casings are pinned, we return null and let the model choose.
+    const cased = this.dictCase.get(token.toLowerCase());
+    if (cased && cased.length === 1) return cased[0];
     return null;
   }
 

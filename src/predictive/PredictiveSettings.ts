@@ -218,6 +218,8 @@ export interface PersonalizationHandlers {
   getStats: () => { corrections: number; accepts: number; reverts: number; charsSaved: number; streak: number; bestStreak: number; minutesSaved: number; learnListSize: number };
   /** Open the full "writing stats" dashboard. */
   onOpenStats: () => void;
+  /** Open the personal-dictionary manager window. */
+  onOpenDictionary: () => void;
   /** Re-open the getting-started tour. */
   onOpenTutorial: () => void;
   /** Reset all statistics (behind a confirmation). */
@@ -552,60 +554,16 @@ export function buildPredictiveSettingGroups(
         }),
     );
 
-  b.custom("Personal dictionary", (el) => {
-    el.createEl("p", {
-      cls: "setting-item-description",
-      text:
-        'Words that are always correct as written, so they are never autocorrected or re-cased. ' +
-        'Case-sensitive, so odd spellings ("NixOS", "kubeCTL") are pinned exactly. Words you add ' +
-        "yourself are listed first; the rest were learned automatically when you undid a correction.",
-    });
-
-    const userAdded = new Set(settings.userDictionaryUserAdded ?? []);
-    const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
-    const added = settings.userDictionary.filter((w) => userAdded.has(w)).sort(byName);
-    const learned = settings.userDictionary.filter((w) => !userAdded.has(w)).sort(byName);
-
-    const removeWord = (w: string) => {
-      settings.userDictionary = settings.userDictionary.filter((x) => x !== w);
-      settings.userDictionaryUserAdded = (settings.userDictionaryUserAdded ?? []).filter((x) => x !== w);
-      commit();
-      redraw?.();
-    };
-    const addWord = (raw: string) => {
-      const w = raw.trim();
-      if (!w || settings.userDictionary.includes(w)) return;
-      settings.userDictionary = [...settings.userDictionary, w];
-      settings.userDictionaryUserAdded = [...(settings.userDictionaryUserAdded ?? []), w];
-      commit();
-      redraw?.();
-    };
-
-    // Add box.
-    const addRow = el.createDiv({ cls: "smart-autocorrect-dict-add" });
-    const input = addRow.createEl("input", { type: "text", attr: { placeholder: "Add a word…", spellcheck: "false" } });
-    const addBtn = addRow.createEl("button", { text: "Add" });
-    addBtn.onclick = () => { addWord(input.value); input.value = ""; input.focus(); };
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); addWord(input.value); input.value = ""; }
-    });
-
-    const section = (title: string, words: string[]) => {
-      if (words.length === 0) return;
-      el.createEl("div", { cls: "smart-autocorrect-dict-heading", text: `${title} (${words.length})` });
-      const list = el.createDiv({ cls: "smart-autocorrect-dict-list" });
-      for (const w of words) {
-        const chip = list.createSpan({ cls: "smart-autocorrect-dict-chip" });
-        chip.createSpan({ text: w });
-        const x = chip.createSpan({ cls: "smart-autocorrect-dict-remove", text: "✕", attr: { "aria-label": `Remove “${w}”` } });
-        x.onclick = () => removeWord(w);
-      }
-    };
-    section("Added by you", added);
-    section("Learned automatically", learned);
-    if (added.length === 0 && learned.length === 0)
-      el.createEl("p", { cls: "setting-item-description", text: "No words yet — add one above, or right-click a word in a note." });
-  });
+  if (personalization) {
+    const count = settings.userDictionary.length;
+    row()
+      .setName("Personal dictionary")
+      .setDesc(
+        `Words that are always correct as written, so they're never autocorrected or re-cased ` +
+          `(${count} word${count === 1 ? "" : "s"}). Open the manager to see, add, or remove them.`,
+      )
+      .addButton((b) => b.setButtonText("Manage dictionary").onClick(() => personalization.onOpenDictionary()));
+  }
 
   row()
     .setName("Suggest personal dictionary words")
@@ -794,7 +752,7 @@ export function buildPredictiveSettingGroups(
     );
 
   // --- convenience: small auto-formatting helpers ------------------------
-  b.group("Convenience (auto-formatting)", true);
+  b.group("Formatting", true);
   b.note("Small formatting helpers that tidy up what you type. Each is independent.");
   toggle(
     "Tidy currency amounts",

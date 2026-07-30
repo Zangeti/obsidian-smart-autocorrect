@@ -7,6 +7,11 @@
 .smart-autocorrect-dict-chip { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.15em 0.5em; border-radius: 0.8em; background: var(--background-modifier-hover); font-size: 0.9em; }
 .smart-autocorrect-dict-remove { cursor: pointer; opacity: 0.5; font-size: 0.85em; }
 .smart-autocorrect-dict-remove:hover { opacity: 1; color: var(--text-error); }
+/* Dictionary manager modal. */
+.smart-autocorrect-dict-modal .smart-autocorrect-dict-rows { max-height: 40vh; overflow-y: auto; margin: 0.2em 0 0.6em; }
+.smart-autocorrect-dict-row { display: flex; justify-content: space-between; align-items: center; padding: 0.25em 0.2em; border-bottom: 1px solid var(--background-modifier-border); }
+.smart-autocorrect-dict-word { font-family: var(--font-monospace); }
+.smart-autocorrect-dict-remove-btn { font-size: 0.8em; padding: 0.1em 0.6em; }
 
 .predictive-suggestion { display: flex; justify-content: space-between; gap: 1em; align-items: baseline; }
 .predictive-suggestion .predictive-left { display: flex; align-items: baseline; gap: 0.45em; min-width: 0; }
