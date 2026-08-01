@@ -68,6 +68,10 @@ const LSTM_TOKEN_RE = /[A-Za-z]+(?:'[A-Za-z]+)?|[.,!?;:]/g;
  * dropped from their opener on.
  */
 export function sanitizeForModel(text: string): string {
+  // Boundary guard: text arrives from callers (and across the worker RPC), so a null/undefined
+  // slip must degrade to "no tokens" rather than throwing `undefined.replace` - a hard crash here
+  // once surfaced as a plugin-activation failure.
+  if (typeof text !== "string") return "";
   return (
     text
       // Fenced code blocks, closed then an unclosed trailing fence.
@@ -150,6 +154,7 @@ export function harmonizeProperCase(surface: string): string {
 
 /** Split raw text into the CASE-PRESERVING word+punctuation tokens the LSTM wants. */
 export function tokenizeWordsCased(text: string): string[] {
+  if (typeof text !== "string") return []; // boundary guard (see sanitizeForModel)
   // Smart quotes -> straight, so "don’t" tokenises as the trained "don't" rather
   // than splitting into "don" + "t".
   return text.replace(/[‘’]/g, "'").match(LSTM_TOKEN_RE) ?? [];
@@ -158,6 +163,7 @@ export function tokenizeWordsCased(text: string): string[] {
 /** Split raw text into lower-cased word tokens (no sentence structure). */
 export function tokenizeWords(text: string): string[] {
   const out: string[] = [];
+  if (typeof text !== "string") return out; // boundary guard (see sanitizeForModel)
   const matches = text.match(WORD_RE);
   if (!matches) return out;
   for (const m of matches) {

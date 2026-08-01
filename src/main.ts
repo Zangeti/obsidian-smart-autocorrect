@@ -7,7 +7,7 @@
  * lives in ./predictive (Obsidian glue) and its vendored ./predictive/engine
  * (unit-tested core). Fully offline - nothing leaves the vault.
  */
-import { App, Plugin, PluginSettingTab, type SettingDefinitionItem } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, type SettingDefinitionItem } from "obsidian";
 import { PredictiveFeature } from "./predictive/PredictiveFeature";
 import type { PredictiveSettings } from "./predictive/PredictiveSettings";
 import type { EngagementState } from "./predictive/EngagementStore";
@@ -25,7 +25,16 @@ export default class SmartAutocorrectPlugin extends Plugin {
     this.predictive = new PredictiveFeature(this, data.predictive, data.engagement);
     this.predictive.onEngagementChange = () => void this.persist();
     this.predictive.onPersistSettings = () => void this.persist();
-    await this.predictive.enable();
+    // enable() guards its own engine bring-up, but wrap it here too so that NOTHING it does can
+    // reject onload() - a rejected onload is what Obsidian reports as "Plugin failure: ...", which
+    // leaves the plugin impossible to turn on. Worst case the plugin loads degraded and the user
+    // still gets the settings tab (and a clear notice) rather than a hard failure.
+    try {
+      await this.predictive.enable();
+    } catch (e) {
+      console.error("[smart-autocorrect] failed to enable; loading in a reduced state", e);
+      new Notice("Smart Autocorrect started with limited functionality — see the developer console for details.");
+    }
     this.addSettingTab(new SmartSettingTab(this.app, this));
   }
 

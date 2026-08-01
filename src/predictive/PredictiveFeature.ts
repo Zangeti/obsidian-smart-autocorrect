@@ -559,15 +559,24 @@ export class PredictiveFeature {
   }
 
   async enable(): Promise<void> {
-    await this.store.load();
-    this.engine.updateSettings(this.settings);
-    await this.loadModels();
-    await this.engine.rebuildPersonal();
-    this.seedActiveDocument();
-    // One-time tidy of the personal dictionary now the engine can answer "do you already know
-    // this?" - clears entries an older build wrongly added (e.g. a proper noun the word list knows,
-    // which was showing a stray "yours" badge).
-    this.reconcileDict();
+    // Engine + model bring-up is isolated so a failure in it can NEVER stop the plugin from
+    // activating. Every step here has a graceful degraded state (no personal store, n-gram-only,
+    // no models), so on any error we log and carry on to register the editor features below with
+    // whatever the engine managed to load - the plugin stays usable instead of failing to load
+    // entirely (which Obsidian surfaces as "Plugin failure"). main.ts guards the call too.
+    try {
+      await this.store.load();
+      this.engine.updateSettings(this.settings);
+      await this.loadModels();
+      await this.engine.rebuildPersonal();
+      this.seedActiveDocument();
+      // One-time tidy of the personal dictionary now the engine can answer "do you already know
+      // this?" - clears entries an older build wrongly added (e.g. a proper noun the word list knows,
+      // which was showing a stray "yours" badge).
+      this.reconcileDict();
+    } catch (e) {
+      console.error("[smart-autocorrect] engine initialisation failed; continuing with reduced functionality", e);
+    }
     // Offer the one-time model download AFTER the plugin is already usable, so a slow
     // or declined download never delays startup. Asked once; `modelPromptShown` makes
     // "not now" stick, and settings has a button to change your mind.
