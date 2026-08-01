@@ -79,7 +79,7 @@ export class DictionaryModal extends Modal {
 
     const section = (title: string, words: string[]) => {
       if (words.length === 0) return;
-      el.createEl("div", { cls: "smart-autocorrect-dict-heading", text: `${title} (${words.length})` });
+      el.createDiv({ cls: "smart-autocorrect-dict-heading", text: `${title} (${words.length})` });
       const list = el.createDiv({ cls: "smart-autocorrect-dict-rows" });
       for (const w of words) {
         const row = list.createDiv({ cls: "smart-autocorrect-dict-row" });
