@@ -1162,10 +1162,15 @@ export class PredictiveFeature {
         },
         onOpenStats: () => this.openStats(),
         onOpenDictionary: () =>
-          new DictionaryModal(this.plugin.app, this.settings, () => {
-            this.onSettingsChanged();
-            this.onPersistSettings?.();
-          }).open(),
+          new DictionaryModal(
+            this.plugin.app,
+            this.settings,
+            () => {
+              this.onSettingsChanged();
+              this.onPersistSettings?.();
+            },
+            (w) => this.engine.isKnownWord(w),
+          ).open(),
         onOpenTutorial: () => this.openTutorial(),
         onResetStats: () => this.confirmResetStats(),
         onResetSettings: () => this.confirmResetSettings(save, refresh),

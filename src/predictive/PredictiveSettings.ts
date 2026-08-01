@@ -378,7 +378,7 @@ export function buildPredictiveSettingGroups(
     row()
       .setName("Factory reset")
       .setDesc("Wipe everything this plugin stores - settings, personalization, statistics and your personal dictionary. Can't be undone.")
-      .addButton((b) => b.setButtonText("Factory reset").setWarning().onClick(() => personalization.onFactoryReset()));
+      .addButton((b) => b.setButtonText("Factory reset").setDestructive().onClick(() => personalization.onFactoryReset()));
 
     // Writing stats + support, right below the reset buttons. The headline number, the button to the
     // full dashboard, and the buy-me-a-coffee block travel together as one section.
@@ -394,11 +394,9 @@ export function buildPredictiveSettingGroups(
       if (topStats.streak > 1)
         saved.appendText(` · 🔥 ${topStats.streak}-day streak (best ${topStats.bestStreak})`);
     });
-    row()
-      .setName("Writing stats")
-      .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
-      .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
-      .addButton((b) => b.setButtonText("Reset statistics").setWarning().onClick(() => personalization.onResetStats()));
+    // Support sits BETWEEN the headline number and the See/Reset-stats menu, so the
+    // buy-me-a-coffee ask reads as part of the stats section rather than trailing after
+    // the reset controls.
     b.custom("Support, buy me a coffee", (el) => {
       const support = el.createDiv({ cls: "smart-autocorrect-support" });
       const supportText = support.createEl("p", { cls: "setting-item-description" });
@@ -413,6 +411,11 @@ export function buildPredictiveSettingGroups(
       qr.width = 130;
       qr.height = 130;
     });
+    row()
+      .setName("Writing stats")
+      .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
+      .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
+      .addButton((b) => b.setButtonText("Reset statistics").setDestructive().onClick(() => personalization.onResetStats()));
   }
 
   if (!settings.pluginEnabled) {
@@ -451,7 +454,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0.5, 8, 0.5)
         .setValue(settings.infoGainThreshold)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.infoGainThreshold = v;
           commit();
@@ -504,7 +506,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0, 1, 0.05)
         .setValue(settings.alpha)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.alpha = v;
           commit();
@@ -518,7 +519,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0, 1, 0.05)
         .setValue(settings.lstmWeight)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.lstmWeight = v;
           commit();
@@ -532,7 +532,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0.2, 3, 0.1)
         .setValue(settings.beta)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.beta = v;
           commit();
@@ -640,7 +639,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0, 3, 0.1)
         .setValue(settings.fuzzyStrength)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.fuzzyStrength = v;
           commit();
@@ -653,7 +651,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0, 3, 0.1)
         .setValue(settings.phoneticStrength)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.phoneticStrength = v;
           commit();
@@ -671,7 +668,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(0, 0.5, 0.05)
         .setValue(settings.cacheGamma)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.cacheGamma = v;
           commit();
@@ -685,7 +681,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(1, 8, 1)
         .setValue(settings.maxSuggestions)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.maxSuggestions = v;
           commit();
@@ -703,7 +698,6 @@ export function buildPredictiveSettingGroups(
       s
         .setLimits(1, 5, 1)
         .setValue(settings.minChars)
-        .setDynamicTooltip()
         .onChange((v) => {
           settings.minChars = v;
           commit();
@@ -857,7 +851,6 @@ export function buildPredictiveSettingGroups(
         s
           .setLimits(1, 5, 1)
           .setValue(settings.relatedSensitivity)
-          .setDynamicTooltip()
           .onChange((v) => {
             settings.relatedSensitivity = v;
             commit();
@@ -873,7 +866,6 @@ export function buildPredictiveSettingGroups(
         s
           .setLimits(5, 40, 1)
           .setValue(settings.minLinkWords)
-          .setDynamicTooltip()
           .onChange((v) => {
             settings.minLinkWords = v;
             commit();
@@ -1084,7 +1076,7 @@ export function buildPredictiveSettingGroups(
     .addButton((b) =>
       b
         .setButtonText("Reset")
-        .setWarning()
+        .setDestructive()
         .onClick(() => void personalization.onReset()),
     );
   return b.groups;

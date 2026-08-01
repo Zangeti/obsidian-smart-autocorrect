@@ -3,7 +3,7 @@
  * yourself above the ones learned automatically (each alphabetical), with a remove button per word
  * and an add field at the bottom. Mutates the live settings object and calls `onChange` to persist.
  */
-import { Modal, Setting } from "obsidian";
+import { Modal, Notice, Setting } from "obsidian";
 import type { App } from "obsidian";
 import type { PredictiveSettings } from "./PredictiveSettings";
 
@@ -12,6 +12,10 @@ export class DictionaryModal extends Modal {
     app: App,
     private settings: PredictiveSettings,
     private onChange: () => void,
+    /** Whether the engine already recognises a word, so we can refuse to "add" one that
+     *  is already correct (it would just be tidied away again). Optional so tests/callers
+     *  without an engine still work - they simply skip the known-word guard. */
+    private isKnown?: (word: string) => Promise<boolean>,
   ) {
     super(app);
   }
@@ -44,9 +48,29 @@ export class DictionaryModal extends Modal {
       this.onChange();
       this.render();
     };
-    const add = (raw: string) => {
+    const add = async (raw: string) => {
       const w = raw.trim();
-      if (!w || this.settings.userDictionary.includes(w)) return;
+      if (!w) return;
+      if (/\d/.test(w)) {
+        new Notice(`“${w}” isn't a dictionary word`);
+        return;
+      }
+      // Reject a word that is already pinned, case-INSENSITIVELY: "iPhone" and "iphone"
+      // are the same entry as far as "already there" goes, so don't stack a second row.
+      if (this.settings.userDictionary.some((x) => x.toLowerCase() === w.toLowerCase())) {
+        new Notice(`“${w}” is already in your personal dictionary`);
+        return;
+      }
+      // Reject a word the engine already recognises: adding it is redundant (it is never
+      // autocorrected in the first place), so it would just be tidied away again.
+      try {
+        if (this.isKnown && (await this.isKnown(w))) {
+          new Notice(`“${w}” is already recognised — no need to add it`);
+          return;
+        }
+      } catch {
+        /* engine unavailable: add best-effort */
+      }
       this.settings.userDictionary = [...this.settings.userDictionary, w];
       this.settings.userDictionaryUserAdded = [...(this.settings.userDictionaryUserAdded ?? []), w];
       this.onChange();
@@ -75,10 +99,10 @@ export class DictionaryModal extends Modal {
         t.setPlaceholder("word");
         t.onChange((v) => (pending = v));
         t.inputEl.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); add(t.getValue()); }
+          if (e.key === "Enter") { e.preventDefault(); void add(t.getValue()); }
         });
       })
-      .addButton((b) => b.setButtonText("Add").setCta().onClick(() => add(pending)));
+      .addButton((b) => b.setButtonText("Add").setCta().onClick(() => void add(pending)));
   }
 
   onClose(): void {

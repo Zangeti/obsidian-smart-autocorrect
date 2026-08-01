@@ -372,7 +372,8 @@ export function relatedLinksExtension(
   };
   const underlineHandlers = EditorView.domEventHandlers({
     mousedown(evt, view) {
-      const el = (evt.target as HTMLElement)?.closest?.(".smart-autocorrect-link-underline") as HTMLElement | null;
+      const t = evt.target;
+      const el = t instanceof HTMLElement ? t.closest<HTMLElement>(".smart-autocorrect-link-underline") : null;
       if (!el) return false;
       const seg = segAt(view, evt);
       if (!seg?.span) return false;
@@ -382,7 +383,8 @@ export function relatedLinksExtension(
       return true;
     },
     mouseover(evt, view) {
-      const el = (evt.target as HTMLElement)?.closest?.(".smart-autocorrect-link-underline") as HTMLElement | null;
+      const t = evt.target;
+      const el = t instanceof HTMLElement ? t.closest<HTMLElement>(".smart-autocorrect-link-underline") : null;
       if (!el) return false;
       const seg = segAt(view, evt);
       const target = seg?.candidates[0]?.target;
