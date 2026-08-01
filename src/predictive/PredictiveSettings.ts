@@ -378,7 +378,14 @@ export function buildPredictiveSettingGroups(
     row()
       .setName("Factory reset")
       .setDesc("Wipe everything this plugin stores - settings, personalization, statistics and your personal dictionary. Can't be undone.")
-      .addButton((b) => b.setButtonText("Factory reset").setDestructive().onClick(() => personalization.onFactoryReset()));
+      .addButton((b) => {
+        // mod-warning (the red destructive style) is applied by the CSS class directly rather
+        // than ButtonComponent.setWarning(): setWarning is deprecated and its replacement
+        // setDestructive() is newer than our declared minAppVersion, so calling either trips the
+        // plugin scanner. The class has been stable for years and works on every version.
+        b.setButtonText("Factory reset").onClick(() => personalization.onFactoryReset());
+        b.buttonEl.addClass("mod-warning");
+      });
 
     // Writing stats + support, right below the reset buttons. The headline number, the button to the
     // full dashboard, and the buy-me-a-coffee block travel together as one section.
@@ -415,7 +422,10 @@ export function buildPredictiveSettingGroups(
       .setName("Writing stats")
       .setDesc("Your streak, time saved, milestones, and what the plugin has learned. Stored with your vault, so the numbers are the same on every device.")
       .addButton((b) => b.setButtonText("See your stats").setCta().onClick(() => personalization.onOpenStats()))
-      .addButton((b) => b.setButtonText("Reset statistics").setDestructive().onClick(() => personalization.onResetStats()));
+      .addButton((b) => {
+        b.setButtonText("Reset statistics").onClick(() => personalization.onResetStats());
+        b.buttonEl.addClass("mod-warning"); // see the Factory-reset button for why the class, not setWarning()
+      });
   }
 
   if (!settings.pluginEnabled) {
@@ -1073,12 +1083,10 @@ export function buildPredictiveSettingGroups(
   row()
     .setName("Reset personalization")
     .setDesc("Clear all learned adaptation (keyboard model, ranking, protected words).")
-    .addButton((b) =>
-      b
-        .setButtonText("Reset")
-        .setDestructive()
-        .onClick(() => void personalization.onReset()),
-    );
+    .addButton((b) => {
+      b.setButtonText("Reset").onClick(() => void personalization.onReset());
+      b.buttonEl.addClass("mod-warning"); // see the Factory-reset button for why the class, not setWarning()
+    });
   return b.groups;
 }
 
